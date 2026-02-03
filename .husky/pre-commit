@@ -1,0 +1,8 @@
+# Frontend: lint-staged (eslint + prettier)
+npx lint-staged
+
+# Backend: ruff + mypy
+cd backend
+uv run ruff check --fix .
+uv run ruff format .
+uv run mypy .

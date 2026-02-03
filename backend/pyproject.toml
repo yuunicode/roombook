@@ -1,0 +1,43 @@
+[project]
+name = "roombook-backend"
+version = "0.1.0"
+description = "회의실 예약 시스템 백엔드"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.9.0",
+    "mypy>=1.14.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.25.0",
+    "httpx>=0.28.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "ruff>=0.14.14",
+]
