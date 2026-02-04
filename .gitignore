@@ -7,11 +7,13 @@ node_modules/
 dist/
 dist-ssr/
 *.local
+tsconfig.tsbuildinfo
 
 # Editor
 .vscode/*
 !.vscode/extensions.json
 .idea
+.cursor/
 
 # Debug
 npm-debug.log*
