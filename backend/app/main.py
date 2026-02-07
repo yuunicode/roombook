@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.router.health_router import router as health_router
+
 app = FastAPI(
     title="Roombook API",
     description="회의실 예약 시스템 API",
@@ -16,3 +18,5 @@ app.add_middleware(
     allow_methods=["*"],  # HTTP 메서드 전부 허용 (GET, POST, etc)
     allow_headers=["*"],  # 요청헤더 전부 허용 (Authorization, Content-Type, etc)
 )
+
+app.include_router(health_router)
