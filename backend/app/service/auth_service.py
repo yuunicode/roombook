@@ -16,6 +16,7 @@ USERS_TABLE = (
     ),
 )
 
+
 def authenticate_user(email: str, password: str) -> AuthUserModel | None:
     # 이메일로 사용자를 찾고 비밀번호가 일치하면 인증된 사용자 정보를 반환한다.
     user = _find_user_by_email(email)

@@ -25,7 +25,6 @@ def test_should_login_and_set_1year_cookie_when_credentials_are_valid() -> None:
     assert "HttpOnly" in set_cookie
 
 
-
 def test_should_return_401_when_login_credentials_are_invalid() -> None:
     client = TestClient(app)
 
@@ -41,7 +40,6 @@ def test_should_return_401_when_login_credentials_are_invalid() -> None:
             "message": "이메일 또는 비밀번호가 올바르지 않습니다.",
         }
     }
-
 
 
 def test_should_return_current_user_when_session_cookie_is_valid() -> None:
@@ -63,7 +61,6 @@ def test_should_return_current_user_when_session_cookie_is_valid() -> None:
             "email": "admin@ecminer.com",
         }
     }
-
 
 
 def test_should_return_401_when_session_cookie_is_missing() -> None:

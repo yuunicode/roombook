@@ -1,5 +1,3 @@
-from typing import Protocol
-
 from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -11,6 +9,7 @@ from app.core.settings import (
     SESSION_COOKIE_SAMESITE,
     SESSION_COOKIE_SECURE,
 )
+from app.infra.user_model import AuthUserModel
 from app.service.auth_service import authenticate_user, create_session_token, get_user_from_session_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -38,12 +37,6 @@ class ErrorDetail(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorDetail
-
-
-class UserLike(Protocol):
-    id: str
-    name: str
-    email: str
 
 
 @router.post(
@@ -87,7 +80,7 @@ async def get_me(request: Request) -> AuthResponse | JSONResponse:
     return AuthResponse(user=_to_user_response(user))
 
 
-def _to_user_response(user: UserLike) -> UserResponse:
+def _to_user_response(user: AuthUserModel) -> UserResponse:
     # 서비스 모델을 API 응답 모델로 변환한다.
     return UserResponse(id=user.id, name=user.name, email=user.email)
 
