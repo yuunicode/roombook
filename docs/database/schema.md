@@ -7,8 +7,9 @@
 | 컬럼 | 타입 | 제약조건 | 설명 |
 |------|------|----------|------|
 | id | UUID | PK, DEFAULT uuid_generate_v4() | 사용자 고유 ID |
-| email | VARCHAR(255) | UNIQUE, NOT NULL | 이메일 (SSO 식별자) |
+| email | VARCHAR(255) | UNIQUE, NOT NULL | 회사 도메인 이메일 |
 | name | VARCHAR(100) | NOT NULL | 사용자 이름 |
+| password | VARCHAR(255) | NOT NULL | 로그인 비밀번호 (초기 일괄 `ecminer`) |
 | department | VARCHAR(100) | | 부서명 |
 | created_at | TIMESTAMP WITH TIME ZONE | DEFAULT NOW() | 생성 시각 |
 | updated_at | TIMESTAMP WITH TIME ZONE | DEFAULT NOW() | 수정 시각 |

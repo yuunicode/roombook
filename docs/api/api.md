@@ -24,7 +24,6 @@
 |------|------|------|
 | 400 | `INVALID_ARGUMENT` | 요청 형식 오류 |
 | 401 | `UNAUTHORIZED` | 인증 필요 |
-| 401 | `SSO_AUTH_FAILED` | SSO 인증 실패 |
 | 403 | `FORBIDDEN` | 권한 없음 |
 | 404 | `NOT_FOUND` | 리소스 없음 |
 | 409 | `RESERVATION_CONFLICT` | 예약 시간 충돌 |
@@ -34,46 +33,57 @@
 
 ## 1. 인증 API
 
-### 1.1 GET /auth/login - 로그인 시작
+인증은 관리자 사전 등록 `users` 테이블 기반으로 동작한다.
+사용자는 `회사 도메인 이메일 + 비밀번호(ecminer)`로 로그인한다.
+로그인 성공 시 쿠키 세션은 1년간 유지된다.
 
-하이웍스 SSO 인증 페이지로 리다이렉트한다.
+### 1.1 POST /auth/login - 로그인
 
-**Query Parameters**
+**Request Body**
 
 | 이름 | 타입 | 필수 | 설명 |
 |------|------|------|------|
-| return_to | string | N | 로그인 성공 후 이동할 경로 (기본: `/`) |
+| email | string | Y | 회사 도메인 이메일 |
+| password | string | Y | 비밀번호 (`ecminer`) |
 
-**Response**
+**Example Request**
 
-- `302 Redirect` → Hiworks SSO Authorization Endpoint
+```json
+{
+  "email": "admin@ecminer.com",
+  "password": "ecminer"
+}
+```
+
+**Response** `200 OK`
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| user | object | `{ id, name, email }` |
+
+**Set-Cookie**
+
+- `ROOMBOOK_SESSION=...; HttpOnly; Max-Age=31536000; Path=/`
 
 **Error**
 
-- `400 INVALID_ARGUMENT` - return_to 형식 오류
+- `401 UNAUTHORIZED` - 이메일/비밀번호 불일치
 
 ---
 
-### 1.2 GET /auth/callback - SSO 콜백
+### 1.2 GET /auth/me - 로그인 사용자 조회
 
-하이웍스 인증 결과를 받아 세션 쿠키를 설정하고 리다이렉트한다.
+쿠키 세션 기준으로 현재 로그인 사용자를 조회한다.
 
-**Query Parameters**
+**Response** `200 OK`
 
-| 이름 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| code | string | Y | 인증 코드 |
-| state | string | Y | CSRF 방지용 |
-
-**Response**
-
-- `302 Redirect` → return_to (기본 `/`)
-- `Set-Cookie: SESSION_ID=...; HttpOnly; Secure`
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| user | object | `{ id, name, email }` |
 
 **Error**
 
-- `400 INVALID_ARGUMENT` - state 불일치
-- `401 SSO_AUTH_FAILED` - 코드 만료/검증 실패
+- `401 UNAUTHORIZED` - 세션 없음 또는 만료
 
 ---
 

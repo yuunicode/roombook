@@ -11,9 +11,8 @@ erDiagram
         uuid id PK
         string email UK
         string name
+        string password
         string department
-        datetime created_at
-        datetime updated_at
     }
 
     ROOM {
@@ -44,7 +43,7 @@ erDiagram
 ## 엔티티 설명
 
 ### USER
-- SSO 인증을 통해 생성되는 사용자 정보
+- 관리자 사전 등록 계정 정보(회사 도메인 이메일 + 비밀번호+ 부서)
 - 예약 생성/수정/삭제의 주체
 
 ### ROOM
