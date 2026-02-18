@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.settings import SESSION_COOKIE_NAME
 from app.infra.db import get_db_session
 from app.infra.reservation import Reservation
+from app.infra.room_catalog import resolve_room_name
 from app.infra.timetable import Timetable
 from app.infra.user import User
 from app.infra.user_schema import AuthUserModel
@@ -114,19 +115,20 @@ async def get_timetable(
             return _error_response(
                 status.HTTP_400_BAD_REQUEST, "INVALID_ARGUMENT", "start_at/end_at 형식이 올바르지 않습니다."
             )
-        return await _get_week_timetable(db, room_id, anchor_date, start_at, end_at)
+        return await _get_week_timetable(db, room_id, auth_user.id, anchor_date, start_at, end_at)
 
     if month is None:
         return _error_response(status.HTTP_400_BAD_REQUEST, "INVALID_ARGUMENT", "month는 필수입니다.")
     parsed_month = _parse_month(month)
     if parsed_month is None:
         return _error_response(status.HTTP_400_BAD_REQUEST, "INVALID_ARGUMENT", "month 형식은 YYYY-MM 이어야 합니다.")
-    return await _get_month_timetable(db, room_id, parsed_month, preview_limit)
+    return await _get_month_timetable(db, room_id, auth_user.id, parsed_month, preview_limit)
 
 
 async def _get_week_timetable(
     db: AsyncSession,
     room_id: str,
+    user_id: str,
     anchor_date: date,
     day_start: str,
     day_end: str,
@@ -140,6 +142,7 @@ async def _get_week_timetable(
         .join(Timetable, Timetable.id == Reservation.timetable_id)
         .join(User, User.id == Reservation.user_id)
         .where(
+            Reservation.user_id == user_id,
             Timetable.room_id == room_id,
             Timetable.start_at < week_end,
             Timetable.end_at > week_start,
@@ -159,7 +162,7 @@ async def _get_week_timetable(
     ]
 
     return WeekTimetableResponse(
-        room=RoomResponse(id=room_id, name=f"회의실{room_id}"),
+        room=RoomResponse(id=room_id, name=resolve_room_name(room_id)),
         view="week",
         range=RangeResponse(start_at=week_start, end_at=week_end),
         grid_config=GridConfigResponse(day_start=day_start, day_end=day_end),
@@ -170,6 +173,7 @@ async def _get_week_timetable(
 async def _get_month_timetable(
     db: AsyncSession,
     room_id: str,
+    user_id: str,
     month_start_date: date,
     preview_limit: int,
 ) -> MonthTimetableResponse:
@@ -184,6 +188,7 @@ async def _get_month_timetable(
         select(Reservation.id, Reservation.title, Timetable.start_at)
         .join(Timetable, Timetable.id == Reservation.timetable_id)
         .where(
+            Reservation.user_id == user_id,
             Timetable.room_id == room_id,
             Timetable.start_at >= month_start,
             Timetable.start_at < month_end,
@@ -212,7 +217,7 @@ async def _get_month_timetable(
         )
 
     return MonthTimetableResponse(
-        room=RoomResponse(id=room_id, name=f"회의실{room_id}"),
+        room=RoomResponse(id=room_id, name=resolve_room_name(room_id)),
         view="month",
         month=month_start_date.strftime("%Y-%m"),
         days=days,
