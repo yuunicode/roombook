@@ -90,12 +90,27 @@
 
 ## 개발 환경 설정
 
+### 환경 변수 파일 분리
+
+```bash
+cp .env.example .env
+cp backend/.env.example backend/.env
+cp .env.docker.example .env.docker
+```
+
+### PostgreSQL (Docker)
+
+```bash
+docker compose --env-file .env.docker up -d postgres
+docker compose --env-file .env.docker ps
+```
+
 ### Backend
 
 ```bash
 cd backend
 uv sync --dev
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload --env-file .env
 ```
 
 ### Frontend

@@ -9,7 +9,7 @@ from app.core.settings import (
     SESSION_COOKIE_SAMESITE,
     SESSION_COOKIE_SECURE,
 )
-from app.infra.user_model import AuthUserModel
+from app.infra.user_schema import AuthUserModel
 from app.service.auth_service import authenticate_user, create_session_token, get_user_from_session_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])

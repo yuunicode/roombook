@@ -1,6 +1,8 @@
 import os
 from typing import Literal
 
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://test:ecminer@localhost:5432/roombook")
+
 SESSION_COOKIE_NAME = "ROOMBOOK_SESSION"
 SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365  # 1 year
 SESSION_COOKIE_PATH = "/"

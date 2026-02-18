@@ -5,7 +5,7 @@ import hmac
 from datetime import UTC, datetime
 
 from app.core.settings import SESSION_COOKIE_MAX_AGE_SECONDS, SESSION_SIGNING_SECRET
-from app.infra.user_model import AuthUserModel, UserModel
+from app.infra.user_schema import AuthUserModel, UserModel
 
 USERS_TABLE = (
     UserModel(

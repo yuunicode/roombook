@@ -1,15 +1,22 @@
 services:
   postgres:
     image: postgres:16
-    container_name: roombook-postgres
+    restart: unless-stopped
     ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_DB: roombook
-      POSTGRES_USER: test
-      POSTGRES_PASSWORD: ecminer
+      - "${DB_PORT}:5432"
+    env_file:
+      - .env
     volumes:
       - roombook_pg:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   roombook_pg:
