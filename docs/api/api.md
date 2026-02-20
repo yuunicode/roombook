@@ -1,5 +1,8 @@
 # API 명세서
 
+- Revision Date: 2026-02-20
+- Version: v1
+
 ## 공통 사항
 
 - **Base URL**: `/api`
@@ -24,7 +27,6 @@
 |------|------|------|
 | 400 | `INVALID_ARGUMENT` | 요청 형식 오류 |
 | 401 | `UNAUTHORIZED` | 인증 필요 |
-| 403 | `FORBIDDEN` | 권한 없음 |
 | 404 | `NOT_FOUND` | 리소스 없음 |
 | 409 | `RESERVATION_CONFLICT` | 예약 시간 충돌 |
 | 500 | `INTERNAL_ERROR` | 서버 오류 |
@@ -38,10 +40,6 @@
 
 ## 1. 인증 API
 
-인증은 관리자 사전 등록 `users` 테이블 기반으로 동작한다.
-사용자는 `회사 도메인 이메일 + 비밀번호(ecminer)`로 로그인한다.
-로그인 성공 시 쿠키 세션은 1년간 유지된다.
-
 ### 1.1 POST /auth/login - 로그인
 
 **Request Body**
@@ -49,26 +47,13 @@
 | 이름 | 타입 | 필수 | 설명 |
 |------|------|------|------|
 | email | string | Y | 회사 도메인 이메일 |
-| password | string | Y | 비밀번호 (`ecminer`) |
-
-**Example Request**
-
-```json
-{
-  "email": "admin@ecminer.com",
-  "password": "ecminer"
-}
-```
+| password | string | Y | 비밀번호 |
 
 **Response** `200 OK`
 
 | 필드 | 타입 | 설명 |
 |------|------|------|
 | user | object | `{ id, name, email }` |
-
-**Set-Cookie**
-
-- `ROOMBOOK_SESSION=...; HttpOnly; Max-Age=31536000; Path=/`
 
 **Error**
 
@@ -77,8 +62,6 @@
 ---
 
 ### 1.2 GET /auth/me - 로그인 사용자 조회
-
-쿠키 세션 기준으로 현재 로그인 사용자를 조회한다.
 
 **Response** `200 OK`
 
@@ -96,7 +79,7 @@
 
 ### 2.1 GET /timetable - 타임테이블 조회
 
-view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터를 반환한다.
+view 파라미터에 따라 주간/월간 데이터를 반환한다.
 
 **공통 Query Parameters**
 
@@ -107,7 +90,7 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 
 ---
 
-### 2.1.1 GET /timetable?view=week - 주간 그리드 조회
+### 2.1.1 GET /timetable?view=week - 주간 조회
 
 **추가 Query Parameters**
 
@@ -123,7 +106,7 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 |------|------|------|
 | room | object | `{ id, name }` |
 | view | string | `week` |
-| range | object | `{ start_at, end_at }` - 주 범위 |
+| range | object | `{ start_at, end_at }` |
 | grid_config | object | `{ day_start, day_end }` |
 | reservations[] | array | 예약 목록 |
 
@@ -137,34 +120,10 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 | end_at | datetime | 종료 시간 |
 | created_by | object | `{ name }` |
 
-**Example**
-
-```json
-{
-  "room": { "id": "A", "name": "회의실A" },
-  "view": "week",
-  "range": {
-    "start_at": "2026-01-26T00:00:00+09:00",
-    "end_at": "2026-02-02T00:00:00+09:00"
-  },
-  "grid_config": { "day_start": "09:00", "day_end": "18:00" },
-  "reservations": [
-    {
-      "id": "rsv_101",
-      "title": "주간 회의",
-      "start_at": "2026-01-27T10:00:00+09:00",
-      "end_at": "2026-01-27T11:00:00+09:00",
-      "created_by": { "name": "홍길동" }
-    }
-  ]
-}
-```
-
 ---
 
 ### 2.1.2 GET /timetable?view=month - 월간 프리뷰 조회
 
-월간 캘린더의 각 날짜 셀에 표시할 예약 요약을 반환한다.
 응답의 `days[]`에는 예약이 존재하는 날짜만 포함된다.
 
 **추가 Query Parameters**
@@ -199,27 +158,6 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 | start_time | HH:mm | 시작 시간 |
 | title | string | 제목 |
 
-**Example**
-
-```json
-{
-  "room": { "id": "A", "name": "회의실A" },
-  "view": "month",
-  "month": "2026-01",
-  "days": [
-    {
-      "date": "2026-01-10",
-      "total_count": 4,
-      "preview": [
-        { "id": "rsv_1", "start_time": "14:00", "title": "정기회의" },
-        { "id": "rsv_2", "start_time": "15:00", "title": "설비점검" },
-        { "id": "rsv_3", "start_time": "16:30", "title": "인터뷰" }
-      ]
-    }
-  ]
-}
-```
-
 ---
 
 ## 3. 예약 API
@@ -239,18 +177,6 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 | description | string | N | 설명 |
 | attendees | string[] | N | 참석자 목록 (`users.id` 또는 `users.email`) |
 
-**Example Request**
-
-```json
-{
-  "room_id": "A",
-  "title": "프로젝트 킥오프",
-  "start_at": "2026-01-27T13:00:00+09:00",
-  "end_at": "2026-01-27T14:00:00+09:00",
-  "description": "회의 안건..."
-}
-```
-
 **Response** `201 Created`
 
 | 필드 | 타입 | 설명 |
@@ -267,60 +193,13 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 
 **Error**
 
-- `400 INVALID_ARGUMENT` - 종료시간 ≤ 시작시간, 포맷 오류
-- `409 RESERVATION_CONFLICT` - 겹치는 예약 존재
+- `400 INVALID_ARGUMENT`
+- `401 UNAUTHORIZED`
+- `409 RESERVATION_CONFLICT`
 
 ---
 
 ### 3.2 GET /reservations/{reservation_id} - 예약 상세 조회
-
-**Path Parameters**
-
-| 이름 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| reservation_id | string | Y | 예약 ID |
-
-**Response** `200 OK`
-
-| 필드 | 타입 | 설명 |
-|------|------|------|
-| id | string | 예약 ID |
-| room_id | string | 회의실 ID |
-| room_name | string | 표시용 회의실 이름 |
-| title | string | 제목 |
-| purpose | string | 회의 목적 |
-| agenda_url | string | 안건/자료 링크 |
-| start_at | datetime | 시작 시간 |
-| end_at | datetime | 종료 시간 |
-| description | string | 설명 |
-| created_by | object | `{ name }` - 생성자 |
-| attendees | array | 참석자 목록 `[{ id, name, email }]` |
-
-**Error**
-
-- `404 NOT_FOUND`
-
----
-
-### 3.3 PATCH /reservations/{reservation_id} - 예약 수정
-
-**Path Parameters**
-
-| 이름 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| reservation_id | string | Y | 예약 ID |
-
-**Request Body** (Partial)
-
-| 이름 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| title | string | N | 제목 |
-| purpose | string | N | 회의 목적 |
-| agenda_url | string | N | 안건/자료 링크 |
-| start_at | datetime | N | 시작 시간 |
-| end_at | datetime | N | 종료 시간 |
-| description | string | N | 설명 |
-| attendees | string[] | N | 참석자 목록 (`users.id` 또는 `users.email`) |
 
 **Response** `200 OK`
 
@@ -336,11 +215,49 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 | end_at | datetime | 종료 시간 |
 | description | string | 설명 |
 | created_by | object | `{ name }` |
-| attendees | array | 참석자 목록 `[{ id, name, email }]` |
+| attendees | array | `[{ id, name, email }]` |
+
+**Error**
+
+- `401 UNAUTHORIZED`
+- `404 NOT_FOUND`
+
+---
+
+### 3.3 PATCH /reservations/{reservation_id} - 예약 수정
+
+**Request Body (Partial)**
+
+| 이름 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| title | string | N | 제목 |
+| purpose | string | N | 회의 목적 |
+| agenda_url | string | N | 안건/자료 링크 |
+| start_at | datetime | N | 시작 시간 |
+| end_at | datetime | N | 종료 시간 |
+| description | string | N | 설명 |
+| attendees | string[] | N | 참석자 목록 (`users.id` 또는 `users.email`) |
+
+**Response** `200 OK`
+
+- 예약 상세 조회(`3.2`)와 동일 스키마
 
 **Error**
 
 - `400 INVALID_ARGUMENT`
+- `401 UNAUTHORIZED`
+- `404 NOT_FOUND`
+- `409 RESERVATION_CONFLICT`
+
+---
+
+### 3.4 DELETE /reservations/{reservation_id} - 예약 삭제
+
+**Response** `204 No Content`
+
+**Error**
+
+- `401 UNAUTHORIZED`
 - `404 NOT_FOUND`
 
 ---
@@ -348,8 +265,6 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 ## 4. 사용자 검색 API
 
 ### 4.1 GET /users/search - 참석자 자동완성
-
-세션 쿠키 기반으로 사용자 검색을 수행한다.
 
 **Query Parameters**
 
@@ -373,20 +288,3 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 **Error**
 
 - `401 UNAUTHORIZED`
-- `409 RESERVATION_CONFLICT`
-
----
-
-### 3.4 DELETE /reservations/{reservation_id} - 예약 삭제
-
-**Path Parameters**
-
-| 이름 | 타입 | 필수 | 설명 |
-|------|------|------|------|
-| reservation_id | string | Y | 예약 ID |
-
-**Response** `204 No Content`
-
-**Error**
-
-- `404 NOT_FOUND`
