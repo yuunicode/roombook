@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.router.auth import router as auth_router
 from app.router.reservation import router as reservation_router
 from app.router.timetable import router as timetable_router
+from app.router.users import router as users_router
 
 app = FastAPI(
     title="Roombook API",
@@ -24,3 +25,4 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(timetable_router)
 app.include_router(reservation_router)
+app.include_router(users_router)

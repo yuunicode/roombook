@@ -1,26 +1,16 @@
-from __future__ import annotations
-
-from collections import defaultdict
-from datetime import date, datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, time
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import SESSION_COOKIE_NAME
 from app.infra.db import get_db_session
-from app.infra.reservation import Reservation
-from app.infra.room_catalog import resolve_room_name
-from app.infra.timetable import Timetable
-from app.infra.user import User
-from app.infra.user_schema import AuthUserModel
-from app.service.auth_service import get_user_from_session_token
+from app.service.auth_service import AuthUser, get_user_from_session_token
+from app.service.timetable_service import get_month_timetable, get_week_timetable
 
 router = APIRouter(prefix="/api/timetable", tags=["timetable"])
-KST = ZoneInfo("Asia/Seoul")
 
 
 class ErrorDetail(BaseModel):
@@ -102,7 +92,7 @@ async def get_timetable(
     preview_limit: int = Query(3, ge=1, le=20),
     db: AsyncSession = Depends(get_db_session),
 ) -> WeekTimetableResponse | MonthTimetableResponse | JSONResponse:
-    auth_user = _require_auth_user(request)
+    auth_user = await _require_auth_user(request, db)
     if auth_user is None:
         return _error_response(status.HTTP_401_UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다.")
 
@@ -115,120 +105,66 @@ async def get_timetable(
             return _error_response(
                 status.HTTP_400_BAD_REQUEST, "INVALID_ARGUMENT", "start_at/end_at 형식이 올바르지 않습니다."
             )
-        return await _get_week_timetable(db, room_id, auth_user.id, anchor_date, start_at, end_at)
+        week_result = await get_week_timetable(
+            db=db,
+            room_id=room_id,
+            user_id=auth_user.id,
+            anchor_date=anchor_date,
+            day_start=start_at,
+            day_end=end_at,
+        )
+        return WeekTimetableResponse(
+            room=RoomResponse(id=week_result.room_id, name=week_result.room_name),
+            view=week_result.view,
+            range=RangeResponse(start_at=week_result.range_start_at, end_at=week_result.range_end_at),
+            grid_config=GridConfigResponse(day_start=week_result.day_start, day_end=week_result.day_end),
+            reservations=[
+                WeekReservationItem(
+                    id=item.id,
+                    title=item.title,
+                    start_at=item.start_at,
+                    end_at=item.end_at,
+                    created_by=CreatedByResponse(name=item.created_by_name),
+                )
+                for item in week_result.reservations
+            ],
+        )
 
     if month is None:
         return _error_response(status.HTTP_400_BAD_REQUEST, "INVALID_ARGUMENT", "month는 필수입니다.")
     parsed_month = _parse_month(month)
     if parsed_month is None:
         return _error_response(status.HTTP_400_BAD_REQUEST, "INVALID_ARGUMENT", "month 형식은 YYYY-MM 이어야 합니다.")
-    return await _get_month_timetable(db, room_id, auth_user.id, parsed_month, preview_limit)
-
-
-async def _get_week_timetable(
-    db: AsyncSession,
-    room_id: str,
-    user_id: str,
-    anchor_date: date,
-    day_start: str,
-    day_end: str,
-) -> WeekTimetableResponse:
-    week_start_date = anchor_date - timedelta(days=anchor_date.weekday())
-    week_start = datetime.combine(week_start_date, time(0, 0), tzinfo=KST)
-    week_end = week_start + timedelta(days=7)
-
-    rows = await db.execute(
-        select(Reservation, Timetable, User)
-        .join(Timetable, Timetable.id == Reservation.timetable_id)
-        .join(User, User.id == Reservation.user_id)
-        .where(
-            Reservation.user_id == user_id,
-            Timetable.room_id == room_id,
-            Timetable.start_at < week_end,
-            Timetable.end_at > week_start,
-        )
-        .order_by(Timetable.start_at.asc())
+    month_result = await get_month_timetable(
+        db=db,
+        room_id=room_id,
+        user_id=auth_user.id,
+        month_start_date=parsed_month,
+        preview_limit=preview_limit,
     )
-
-    reservations = [
-        WeekReservationItem(
-            id=reservation.id,
-            title=reservation.title,
-            start_at=timetable.start_at,
-            end_at=timetable.end_at,
-            created_by=CreatedByResponse(name=user.name),
-        )
-        for reservation, timetable, user in rows.all()
-    ]
-
-    return WeekTimetableResponse(
-        room=RoomResponse(id=room_id, name=resolve_room_name(room_id)),
-        view="week",
-        range=RangeResponse(start_at=week_start, end_at=week_end),
-        grid_config=GridConfigResponse(day_start=day_start, day_end=day_end),
-        reservations=reservations,
-    )
-
-
-async def _get_month_timetable(
-    db: AsyncSession,
-    room_id: str,
-    user_id: str,
-    month_start_date: date,
-    preview_limit: int,
-) -> MonthTimetableResponse:
-    next_month_year = month_start_date.year + (1 if month_start_date.month == 12 else 0)
-    next_month_month = 1 if month_start_date.month == 12 else month_start_date.month + 1
-    month_end_date = date(next_month_year, next_month_month, 1)
-
-    month_start = datetime.combine(month_start_date, time(0, 0), tzinfo=KST)
-    month_end = datetime.combine(month_end_date, time(0, 0), tzinfo=KST)
-
-    rows = await db.execute(
-        select(Reservation.id, Reservation.title, Timetable.start_at)
-        .join(Timetable, Timetable.id == Reservation.timetable_id)
-        .where(
-            Reservation.user_id == user_id,
-            Timetable.room_id == room_id,
-            Timetable.start_at >= month_start,
-            Timetable.start_at < month_end,
-        )
-        .order_by(Timetable.start_at.asc())
-    )
-
-    grouped: dict[date, list[tuple[str, str, datetime]]] = defaultdict(list)
-    for reservation_id, title, starts_at in rows.all():
-        local_dt = starts_at.astimezone(KST)
-        grouped[local_dt.date()].append((reservation_id, title, local_dt))
-
-    days: list[MonthDayItem] = []
-    for target_date in sorted(grouped.keys()):
-        items = grouped[target_date]
-        preview = [
-            MonthPreviewItem(id=reservation_id, start_time=starts_at.strftime("%H:%M"), title=title)
-            for reservation_id, title, starts_at in items[:preview_limit]
-        ]
-        days.append(
-            MonthDayItem(
-                date=target_date,
-                total_count=len(items),
-                preview=preview,
-            )
-        )
-
     return MonthTimetableResponse(
-        room=RoomResponse(id=room_id, name=resolve_room_name(room_id)),
-        view="month",
-        month=month_start_date.strftime("%Y-%m"),
-        days=days,
+        room=RoomResponse(id=month_result.room_id, name=month_result.room_name),
+        view=month_result.view,
+        month=month_result.month,
+        days=[
+            MonthDayItem(
+                date=item.date,
+                total_count=item.total_count,
+                preview=[
+                    MonthPreviewItem(id=preview.id, start_time=preview.start_time, title=preview.title)
+                    for preview in item.preview
+                ],
+            )
+            for item in month_result.days
+        ],
     )
 
 
-def _require_auth_user(request: Request) -> AuthUserModel | None:
+async def _require_auth_user(request: Request, db: AsyncSession) -> AuthUser | None:
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if token is None:
         return None
-    return get_user_from_session_token(token)
+    return await get_user_from_session_token(token, db)
 
 
 def _parse_hhmm(value: str) -> time | None:

@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import (
     SESSION_COOKIE_MAX_AGE_SECONDS,
@@ -9,8 +10,8 @@ from app.core.settings import (
     SESSION_COOKIE_SAMESITE,
     SESSION_COOKIE_SECURE,
 )
-from app.infra.user_schema import AuthUserModel
-from app.service.auth_service import authenticate_user, create_session_token, get_user_from_session_token
+from app.infra.db import get_db_session
+from app.service.auth_service import AuthUser, authenticate_user, create_session_token, get_user_from_session_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -44,9 +45,13 @@ class ErrorResponse(BaseModel):
     response_model=AuthResponse,
     responses={401: {"model": ErrorResponse}},
 )
-async def login(payload: LoginRequest, response: Response) -> AuthResponse | JSONResponse:
+async def login(
+    payload: LoginRequest,
+    response: Response,
+    db: AsyncSession = Depends(get_db_session),
+) -> AuthResponse | JSONResponse:
     # 이메일/비밀번호를 검증하고 성공 시 1년 만료 세션 쿠키를 발급한다.
-    user = authenticate_user(payload.email, payload.password)
+    user = await authenticate_user(payload.email, payload.password, db)
     if user is None:
         return _unauthorized_response("이메일 또는 비밀번호가 올바르지 않습니다.")
 
@@ -67,20 +72,23 @@ async def login(payload: LoginRequest, response: Response) -> AuthResponse | JSO
     response_model=AuthResponse,
     responses={401: {"model": ErrorResponse}},
 )
-async def get_me(request: Request) -> AuthResponse | JSONResponse:
+async def get_me(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> AuthResponse | JSONResponse:
     # 세션 쿠키를 읽어 현재 로그인 사용자를 반환한다.
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if token is None:
         return _unauthorized_response("로그인이 필요합니다.")
 
-    user = get_user_from_session_token(token)
+    user = await get_user_from_session_token(token, db)
     if user is None:
         return _unauthorized_response("로그인이 필요합니다.")
 
     return AuthResponse(user=_to_user_response(user))
 
 
-def _to_user_response(user: AuthUserModel) -> UserResponse:
+def _to_user_response(user: AuthUser) -> UserResponse:
     # 서비스 모델을 API 응답 모델로 변환한다.
     return UserResponse(id=user.id, name=user.name, email=user.email)
 

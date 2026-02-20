@@ -29,6 +29,11 @@
 | 409 | `RESERVATION_CONFLICT` | 예약 시간 충돌 |
 | 500 | `INTERNAL_ERROR` | 서버 오류 |
 
+### 권한 정책
+
+- 예약 상세/수정/삭제는 **본인 예약만** 가능하다.
+- 타인의 예약에 접근하면 `404 NOT_FOUND`를 반환한다.
+
 ---
 
 ## 1. 인증 API
@@ -160,6 +165,7 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 ### 2.1.2 GET /timetable?view=month - 월간 프리뷰 조회
 
 월간 캘린더의 각 날짜 셀에 표시할 예약 요약을 반환한다.
+응답의 `days[]`에는 예약이 존재하는 날짜만 포함된다.
 
 **추가 Query Parameters**
 
@@ -226,10 +232,12 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 |------|------|------|------|
 | room_id | string | N | 회의실 ID (기본: `A`) |
 | title | string | Y | 예약 제목 |
+| purpose | string | N | 회의 목적 |
+| agenda_url | string | N | 안건/자료 링크 |
 | start_at | datetime | Y | 시작 시간 |
 | end_at | datetime | Y | 종료 시간 |
 | description | string | N | 설명 |
-| attendees | string[] | N | 참석자 목록 |
+| attendees | string[] | N | 참석자 목록 (`users.id` 또는 `users.email`) |
 
 **Example Request**
 
@@ -249,7 +257,10 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 |------|------|------|
 | id | string | 예약 ID |
 | room_id | string | 회의실 ID |
+| room_name | string | 표시용 회의실 이름 |
 | title | string | 제목 |
+| purpose | string | 회의 목적 |
+| agenda_url | string | 안건/자료 링크 |
 | start_at | datetime | 시작 시간 |
 | end_at | datetime | 종료 시간 |
 | created_at | datetime | 생성 시각 |
@@ -275,11 +286,15 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 |------|------|------|
 | id | string | 예약 ID |
 | room_id | string | 회의실 ID |
+| room_name | string | 표시용 회의실 이름 |
 | title | string | 제목 |
+| purpose | string | 회의 목적 |
+| agenda_url | string | 안건/자료 링크 |
 | start_at | datetime | 시작 시간 |
 | end_at | datetime | 종료 시간 |
 | description | string | 설명 |
 | created_by | object | `{ name }` - 생성자 |
+| attendees | array | 참석자 목록 `[{ id, name, email }]` |
 
 **Error**
 
@@ -300,9 +315,12 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 | 이름 | 타입 | 필수 | 설명 |
 |------|------|------|------|
 | title | string | N | 제목 |
+| purpose | string | N | 회의 목적 |
+| agenda_url | string | N | 안건/자료 링크 |
 | start_at | datetime | N | 시작 시간 |
 | end_at | datetime | N | 종료 시간 |
 | description | string | N | 설명 |
+| attendees | string[] | N | 참석자 목록 (`users.id` 또는 `users.email`) |
 
 **Response** `200 OK`
 
@@ -310,16 +328,51 @@ view 파라미터에 따라 주간 그리드 또는 월간 프리뷰 데이터�
 |------|------|------|
 | id | string | 예약 ID |
 | room_id | string | 회의실 ID |
+| room_name | string | 표시용 회의실 이름 |
 | title | string | 제목 |
+| purpose | string | 회의 목적 |
+| agenda_url | string | 안건/자료 링크 |
 | start_at | datetime | 시작 시간 |
 | end_at | datetime | 종료 시간 |
 | description | string | 설명 |
 | created_by | object | `{ name }` |
+| attendees | array | 참석자 목록 `[{ id, name, email }]` |
 
 **Error**
 
 - `400 INVALID_ARGUMENT`
 - `404 NOT_FOUND`
+
+---
+
+## 4. 사용자 검색 API
+
+### 4.1 GET /users/search - 참석자 자동완성
+
+세션 쿠키 기반으로 사용자 검색을 수행한다.
+
+**Query Parameters**
+
+| 이름 | 타입 | 필수 | 기본값 | 설명 |
+|------|------|------|--------|------|
+| q | string | Y | - | 검색어 |
+| limit | int | N | 10 | 최대 결과 수(1~20) |
+
+**Response** `200 OK`
+
+```json
+[
+  {
+    "id": "1",
+    "name": "관리자",
+    "email": "admin@ecminer.com"
+  }
+]
+```
+
+**Error**
+
+- `401 UNAUTHORIZED`
 - `409 RESERVATION_CONFLICT`
 
 ---

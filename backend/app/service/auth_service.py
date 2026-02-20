@@ -1,32 +1,33 @@
-from __future__ import annotations
-
 import hashlib
 import hmac
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
+import bcrypt
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.settings import SESSION_COOKIE_MAX_AGE_SECONDS, SESSION_SIGNING_SECRET
-from app.infra.user_schema import AuthUserModel, UserModel
-
-USERS_TABLE = (
-    UserModel(
-        id="1",
-        name="관리자",
-        email="admin@ecminer.com",
-        password="ecminer",
-    ),
-)
+from app.infra.user import User
+from app.infra.user_repo import find_user_by_email_ci, find_user_by_id
 
 
-def authenticate_user(email: str, password: str) -> AuthUserModel | None:
+@dataclass(frozen=True, slots=True)
+class AuthUser:
+    id: str
+    name: str
+    email: str
+
+
+async def authenticate_user(email: str, password: str, db: AsyncSession) -> AuthUser | None:
     # 이메일로 사용자를 찾고 비밀번호가 일치하면 인증된 사용자 정보를 반환한다.
-    user = _find_user_by_email(email)
+    user = await _find_user_by_email(db, email)
     if user is None:
         return None
 
-    if not hmac.compare_digest(user.password, password):
+    if not verify_password(password, user.password_hash):
         return None
 
-    return AuthUserModel(id=user.id, name=user.name, email=user.email)
+    return AuthUser(id=user.id, name=user.name, email=user.email)
 
 
 def create_session_token(user_id: str) -> str:
@@ -37,17 +38,17 @@ def create_session_token(user_id: str) -> str:
     return f"{payload}:{signature}"
 
 
-def get_user_from_session_token(token: str) -> AuthUserModel | None:
+async def get_user_from_session_token(token: str, db: AsyncSession) -> AuthUser | None:
     # 세션 토큰을 검증하고 유효하면 사용자 정보를 반환한다.
     parsed_user_id = _verify_session_token(token)
     if parsed_user_id is None:
         return None
 
-    user = _find_user_by_id(parsed_user_id)
+    user = await _find_user_by_id(db, parsed_user_id)
     if user is None:
         return None
 
-    return AuthUserModel(id=user.id, name=user.name, email=user.email)
+    return AuthUser(id=user.id, name=user.name, email=user.email)
 
 
 def _verify_session_token(token: str) -> str | None:
@@ -83,21 +84,25 @@ def _sign(payload: str) -> str:
     ).hexdigest()
 
 
-def _find_user_by_email(email: str) -> UserModel | None:
-    # 이메일 정규화 후 users 목록에서 일치하는 사용자를 찾는다.
-    normalized_email = email.strip().lower()
-    for user in USERS_TABLE:
-        if user.email.lower() == normalized_email:
-            return user
-    return None
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
-def _find_user_by_id(user_id: str) -> UserModel | None:
-    # user_id로 users 목록에서 사용자를 찾는다.
-    for user in USERS_TABLE:
-        if user.id == user_id:
-            return user
-    return None
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    except ValueError:
+        return False
+
+
+async def _find_user_by_email(db: AsyncSession, email: str) -> User | None:
+    # 이메일 정규화 후 users 테이블에서 사용자를 찾는다.
+    return await find_user_by_email_ci(db, email)
+
+
+async def _find_user_by_id(db: AsyncSession, user_id: str) -> User | None:
+    # user_id로 users 테이블에서 사용자를 찾는다.
+    return await find_user_by_id(db, user_id)
 
 
 def _now_unix() -> int:
