@@ -3,3 +3,4 @@
  * 예: HomePage, BookingPage 등
  */
 export { default as HomePage } from './HomePage';
+export { default as MyMeetingsPage } from './MyMeetingsPage';

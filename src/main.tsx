@@ -2,6 +2,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App.tsx';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+import 'react-day-picker/style.css';
 import './index.css';
 
 // TanStack Query 기본 클라이언트 (staleTime 등 필요 시 여기서 조정)
