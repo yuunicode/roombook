@@ -163,6 +163,7 @@ button {
   justify-content: center;
   padding: 20px;
   z-index: 2000;
+  overflow-y: auto;
 }
 
 .dialog-card {
@@ -214,6 +215,7 @@ button {
 .reservation-dialog-card {
   width: min(1160px, 96vw);
   min-height: 580px;
+  max-height: calc(100dvh - 40px);
   background-color: #ffffff;
   border-radius: 14px;
   box-shadow: 0 20px 48px rgba(6, 20, 44, 0.28);
@@ -222,6 +224,7 @@ button {
   grid-template-columns: minmax(560px, 1.25fr) minmax(340px, 1fr);
   gap: 18px;
   position: relative;
+  overflow: hidden;
 }
 
 .reservation-dialog-left,
@@ -229,6 +232,8 @@ button {
   border: 1px solid #e2e9f8;
   border-radius: 12px;
   padding: 14px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .reservation-dialog-left {
@@ -272,16 +277,25 @@ button {
   font-size: 13px;
   color: #5f7398;
   height: 38px;
+  text-align: center;
 }
 
 .workday-picker .rdp-hidden {
   display: none;
 }
 
+.workday-picker .rdp-day {
+  text-align: center;
+}
+
 .workday-picker .rdp-day_button {
   font-size: 14px;
   width: 36px;
   height: 36px;
+  margin: 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .workday-picker .rdp-selected .rdp-day_button {
@@ -316,6 +330,9 @@ button {
   gap: 8px;
   margin-top: 10px;
   width: 100%;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .time-slot-button {
@@ -456,9 +473,21 @@ button {
   .reservation-dialog-card {
     grid-template-columns: 1fr;
     min-height: auto;
+    max-height: calc(100dvh - 24px);
   }
 
   .time-slot-list {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-height: 760px) {
+  .dialog-backdrop {
+    align-items: flex-start;
+    padding: 12px;
+  }
+
+  .reservation-dialog-card {
+    max-height: calc(100dvh - 24px);
   }
 }

@@ -22,9 +22,10 @@ const END_HOUR = 18;
 
 function createTimeSlots() {
   const slots: string[] = [];
-  for (let hour = START_HOUR; hour < END_HOUR; hour += 1) {
-    slots.push(`${String(hour).padStart(2, '0')}:00`);
-    slots.push(`${String(hour).padStart(2, '0')}:30`);
+  for (let minutes = START_HOUR * 60; minutes <= END_HOUR * 60; minutes += 30) {
+    const hour = Math.floor(minutes / 60);
+    const minute = minutes % 60;
+    slots.push(`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
   }
   return slots;
 }
