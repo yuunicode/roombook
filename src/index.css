@@ -43,13 +43,6 @@ button { cursor: pointer; border: none; background: transparent; }
 .popover-item { width: 100%; text-align: left; padding: 8px 12px; border-radius: 6px; font-size: 12px; color: var(--text); cursor: pointer; }
 .popover-item:hover { background: rgba(94, 106, 210, 0.08); color: var(--accent); }
 
-/* Dashboard Styles */
-.dashboard-page { max-width: 800px; margin: 0 auto; padding: 60px 20px; }
-.page-header-content { margin-bottom: 40px; text-align: center; }
-.page-title { font-size: 28px; font-weight: 700; letter-spacing: -0.04em; margin-bottom: 8px; }
-.dashboard-card { background: #ffffff; border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: flex; align-items: center; gap: 16px; margin-bottom: 12px; transition: all 0.2s; }
-.dashboard-card:hover { border-color: var(--border-strong); transform: translateY(-1px); box-shadow: var(--shadow); }
-
 /* Sidebar */
 .main-content { flex: 1; width: 100%; max-width: 1440px; margin: 0 auto; padding: 24px; }
 .timetable-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 48px; }
@@ -68,72 +61,46 @@ button { cursor: pointer; border: none; background: transparent; }
 .sidebar-add-label { display: block; font-size: 14px; font-weight: 700; color: var(--text); }
 .sidebar-add-description { font-size: 11px; color: var(--text-soft); }
 
-.room-button {
-  width: 100%; height: 44px; display: flex; align-items: center; padding: 0 12px; border-radius: 10px; margin-bottom: 4px; color: var(--text-muted);
-}
+.room-button { width: 100%; height: 44px; display: flex; align-items: center; padding: 0 12px; border-radius: 10px; margin-bottom: 4px; color: var(--text-muted); }
 .room-button:hover { background: rgba(16, 18, 24, 0.04); }
 .room-button.active { background: #ffffff; border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.04); color: var(--text); }
 .room-button-content { display: flex; align-items: center; justify-content: space-between; width: 100%; }
-.room-button-main { display: flex; align-items: center; gap: 10px; }
 .room-name-text { font-size: 14px; font-weight: 500; }
 .room-button.active .room-name-text { font-weight: 700; }
 .room-capacity-tag { font-size: 11px; font-weight: 600; color: var(--text-soft); background: rgba(16,18,24,0.05); padding: 2px 8px; border-radius: 6px; }
 .room-button.active .room-capacity-tag { background: rgba(94, 106, 210, 0.1); color: var(--accent); }
 
-.upcoming-list { display: flex; flex-direction: column; gap: 4px; }
-.upcoming-item { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; text-align: left; transition: all 0.2s; }
-.upcoming-item:hover { background: #ffffff; border-color: var(--border); transform: translateX(2px); box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
-.upcoming-item-title { font-size: 13px; font-weight: 600; margin-bottom: 3px; color: var(--text); }
 .upcoming-empty { padding: 8px 12px; font-size: 13px; color: var(--text-soft); line-height: 1.6; }
 
-/* Calendar Controls [SYNCED WITH ACCENT] */
+/* Calendar UI */
 .calendar-control-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .page-view-toggle { display: inline-flex; gap: 4px; align-items: center; background: rgba(16, 18, 24, 0.03); padding: 2px; border-radius: 8px; }
 .page-mode-button { height: 28px; padding: 0 14px; border-radius: 6px; font-size: 12px; font-weight: 500; transition: all 0.2s; color: var(--text-muted); }
 .page-mode-button.active { background: rgba(94, 106, 210, 0.12); color: var(--accent); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 .page-nav-button { background: transparent; padding: 4px 8px; color: var(--text-muted); font-size: 13px; font-weight: 500; }
-.page-nav-button:hover { color: var(--text); }
-
-/* Calendar Core & Time Alignment */
 .rbc-calendar { border: none; font-family: inherit; }
 .rbc-header { padding: 12px 0; font-weight: 600; font-size: 11px; text-transform: uppercase; color: var(--text-soft); border-bottom: 1px solid var(--border) !important; }
-
-/* 오늘 날짜(Today) 강조 스타일 */
-.rbc-today { 
-  background: rgba(94, 106, 210, 0.04) !important; 
-}
-.rbc-header.rbc-today {
-  color: var(--accent) !important;
-  font-weight: 700 !important;
-}
-
-/* 시간 표시 부분 (Gutter) 완벽 왼쪽 정렬 및 너비 확장 */
+.rbc-today { background: rgba(94, 106, 210, 0.04) !important; }
+.rbc-header.rbc-today { color: var(--accent) !important; font-weight: 700 !important; }
 .rbc-time-gutter { width: 72px !important; }
-.rbc-time-gutter .rbc-label {
-  font-size: 11px; font-weight: 600; color: var(--text-soft);
-  padding: 0 !important; display: flex !important; justify-content: flex-start !important; align-items: center !important;
-  height: 100%; width: 100%;
-}
+.rbc-time-gutter .rbc-label { font-size: 11px; font-weight: 600; color: var(--text-soft); padding: 0 !important; display: flex !important; justify-content: flex-start !important; align-items: center !important; height: 100%; width: 100%; }
 .rbc-timeslot-group { border-bottom: 1px solid var(--border) !important; min-height: 60px; }
 .rbc-time-view .rbc-allday-cell, .rbc-time-view .rbc-row.rbc-allday-header, .rbc-time-view .rbc-time-header-gutter .rbc-label { display: none !important; }
 .rbc-time-header-content { border-left: 1px solid var(--border) !important; }
 .rbc-time-view .rbc-day-slot .rbc-events-container { margin-right: 0 !important; padding-right: 0 !important; }
 .rbc-time-view .rbc-event { width: 100% !important; left: 0 !important; margin: 0 !important; }
 
-/* Monthly Grid Alignment */
-.monthly-calendar .rbc-header:nth-child(6), .monthly-calendar .rbc-header:nth-child(7),
-.monthly-calendar .rbc-day-bg:nth-child(6), .monthly-calendar .rbc-day-bg:nth-child(7),
-.monthly-calendar .rbc-date-cell:nth-child(6), .monthly-calendar .rbc-date-cell:nth-child(7) { display: none !important; }
+/* Monthly Grid 5-Day */
+.monthly-calendar .rbc-header:nth-child(6), .monthly-calendar .rbc-header:nth-child(7), .monthly-calendar .rbc-day-bg:nth-child(6), .monthly-calendar .rbc-day-bg:nth-child(7), .monthly-calendar .rbc-date-cell:nth-child(6), .monthly-calendar .rbc-date-cell:nth-child(7) { display: none !important; }
 .monthly-calendar .rbc-month-row, .monthly-calendar .rbc-row-content .rbc-row, .monthly-calendar .rbc-row-bg { display: flex !important; }
-.monthly-calendar .rbc-day-bg, .monthly-calendar .rbc-date-cell, .monthly-calendar .rbc-row-segment, .monthly-calendar .rbc-row-content .rbc-row > * {
-  flex: 1 0 0 !important; width: 20% !important; max-width: 20% !important;
-}
+.monthly-calendar .rbc-day-bg, .monthly-calendar .rbc-date-cell, .monthly-calendar .rbc-row-segment, .monthly-calendar .rbc-row-content .rbc-row > * { flex: 1 0 0 !important; width: 20% !important; max-width: 20% !important; }
 .monthly-calendar .rbc-event { margin: 2px 4px !important; position: relative !important; left: auto !important; width: calc(100% - 8px) !important; height: 22px; display: flex; align-items: center; }
 
-/* Modal & Event Styles */
-.rbc-event { background: rgba(94, 106, 210, 0.08) !important; border: 1px solid rgba(94, 106, 210, 0.15) !important; color: var(--accent) !important; border-radius: 4px !important; font-size: 12px; padding: 4px 8px !important; box-sizing: border-box; }
+/* Modal & Dialog Cards */
 .dialog-backdrop { position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; background: rgba(15, 18, 28, 0.4) !important; display: flex !important; align-items: center !important; justify-content: center !important; z-index: 9999 !important; backdrop-filter: blur(4px); }
-.reservation-status-dialog-card { max-width: 440px !important; width: 90% !important; padding: 0 !important; overflow: hidden; border: 1px solid var(--border) !important; border-radius: 16px !important; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.1) !important; background: #ffffff !important; }
+.reservation-status-dialog-card, .reservation-dialog-card { position: relative !important; max-width: 480px !important; width: 95% !important; padding: 0 !important; overflow: hidden; border: 1px solid var(--border) !important; border-radius: 16px !important; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.1) !important; background: #ffffff !important; }
+.dialog-close-button { position: absolute !important; top: 24px !important; right: 24px !important; width: 32px !important; height: 32px !important; display: flex !important; align-items: center !important; justify-content: center !important; border-radius: 8px !important; color: var(--text-soft) !important; font-size: 18px !important; background: transparent !important; transition: all 0.2s !important; z-index: 100 !important; cursor: pointer !important; border: none !important; }
+.dialog-close-button:hover { background: rgba(16, 18, 24, 0.05) !important; color: var(--text) !important; }
 .status-card-header { padding: 32px 32px 20px; }
 .status-card-body { padding: 0 32px 32px; display: flex; flex-direction: column; gap: 24px; }
 .status-info-label { font-size: 11px; font-weight: 700; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.06em; }
@@ -141,9 +108,91 @@ button { cursor: pointer; border: none; background: transparent; }
 .status-card-footer { padding: 20px 32px; background: #fafafb; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px; }
 .status-badge { display: inline-flex; align-items: center; padding: 4px 10px; background: rgba(94, 106, 210, 0.06); color: var(--accent); border-radius: 6px; font-size: 12px; font-weight: 600; }
 
-/* Other Styles */
-.linear-input { width: 100%; height: 40px; background: #f7f8fa; border: 1px solid var(--border); border-radius: 8px; padding: 0 12px; font-size: 14px; outline: none; }
-.linear-primary-button { width: 100%; height: 40px; background: #101218; color: #ffffff; font-size: 14px; font-weight: 600; border-radius: 8px; }
+/* 심플 인증 레이아웃 (Auth Layout) */
+.auth-page-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+}
+
+.auth-content-box {
+  width: 100%;
+  max-width: 300px; /* 더 컴팩트하게 축소 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 40px;
+}
+
+.auth-brand-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.auth-brand-center .brand-mark { width: 32px; height: 32px; }
+.auth-brand-center .brand-text { font-size: 24px; font-weight: 800; letter-spacing: -0.05em; color: var(--text); }
+
+.auth-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-label { font-size: 12px; font-weight: 600; color: var(--text-soft); }
+
+.auth-input {
+  width: 100%;
+  height: 40px;
+  background: #f7f8fa;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 14px;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.auth-input:focus {
+  background: #ffffff;
+  border-color: var(--text);
+}
+
+.auth-submit-button {
+  width: 100%;
+  height: 40px;
+  background: #101218;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  margin-top: 8px;
+  transition: background 0.2s;
+}
+
+.auth-submit-button:hover { background: #2a2e37; }
+
+.auth-secondary-action {
+  font-size: 13px;
+  color: var(--text-soft);
+  text-align: center;
+  margin-top: 12px;
+}
+
+/* Other UI */
+.rbc-event { background: rgba(94, 106, 210, 0.08) !important; border: 1px solid rgba(94, 106, 210, 0.15) !important; color: var(--accent) !important; border-radius: 4px !important; font-size: 12px; padding: 4px 8px !important; box-sizing: border-box; }
+.linear-input { width: 100%; height: 40px; background: #f7f8fa; border: 1px solid var(--border); border-radius: 8px; padding: 0 12px; font-size: 14px; outline: none; transition: border 0.2s; }
 .minutes-textarea { width: 100%; min-height: 300px; background: #f7f8fa; border: 1px solid var(--border); border-radius: 12px; padding: 16px; font-size: 15px; line-height: 1.6; outline: none; color: var(--text); }
 
 /* Responsive */
@@ -151,51 +200,9 @@ button { cursor: pointer; border: none; background: transparent; }
   .main-nav-header { padding: 0 16px; }
   .header-left, .header-right { min-width: auto; }
   .timetable-layout { grid-template-columns: 1fr; }
-  
-  .room-sidebar { 
-    flex-direction: row; 
-    overflow-x: auto; 
-    gap: 12px; 
-    padding-bottom: 16px;
-    align-items: stretch;
-  }
-
-  /* 예약 추가 버튼: 모바일에서 세로 텍스트로 전환 (공간 절약) */
-  .sidebar-card:has(.sidebar-add-button) {
-    flex: 0 0 54px;
-  }
-  .sidebar-add-button {
-    padding: 10px 4px;
-    width: 100%;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-  }
-  .sidebar-add-description { display: none; }
-  .sidebar-add-label { 
-    font-size: 12px; 
-    line-height: 1.4;
-    white-space: normal; /* 줄바꿈 허용 */
-    display: block;
-    max-width: 30px; /* 너비를 제한하여 강제 줄바꿈 유도 */
-    margin: 0 auto;
-    word-break: keep-all; /* 단어 단위 줄바꿈 */
-  }
-
-  /* Spaces: 수용인원 숨기고 작게 조정 */
-  .sidebar-card:has(.room-button) {
-    flex: 0 0 140px; /* 고정된 작은 너비 */
-  }
-  .room-capacity-tag { display: none; } /* 인원수 숨김 */
-  .room-button { height: 38px; padding: 0 8px; }
-  .room-name-text { font-size: 13px; }
-
-  /* Up Next: 비중 최대화하여 내 일정 강조 */
-  .sidebar-card:has(.upcoming-list),
-  .sidebar-card:has(.upcoming-empty) {
-    flex: 1 0 280px; /* 가장 넓게 차지하여 텍스트 안 잘리게 */
-  }
-  
-  .upcoming-item { padding: 8px 10px; }
-  .upcoming-item-title { font-size: 13px; white-space: normal; } /* 제목 줄바꿈 허용 */
+  .room-sidebar { flex-direction: row; overflow-x: auto; gap: 12px; align-items: stretch; padding-bottom: 16px; }
+  .sidebar-card { flex: 1 0 240px; background: #fafafb; padding: 12px; border-radius: 12px; border: 1px solid var(--border); }
+  .sidebar-card:has(.sidebar-add-button) { flex: 0 0 54px; }
+  .sidebar-card:has(.room-button) { flex: 0 0 140px; }
+  .room-capacity-tag { display: none; }
 }

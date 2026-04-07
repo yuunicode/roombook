@@ -17,8 +17,14 @@ function ChangePasswordPage() {
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentPassword.trim() || !newPassword.trim() || !confirmPassword.trim()) { setErrorMessage('모든 필드를 입력하세요.'); return; }
-    if (newPassword !== confirmPassword) { setErrorMessage('새 비밀번호가 일치하지 않습니다.'); return; }
+    if (!currentPassword.trim() || !newPassword.trim() || !confirmPassword.trim()) {
+      setErrorMessage('모든 필드를 입력해 주세요.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setErrorMessage('새 비밀번호가 일치하지 않습니다.');
+      return;
+    }
     setIsSubmitting(true);
     await new Promise(resolve => setTimeout(resolve, 800));
     await changePassword(userEmail, newPassword);
@@ -28,33 +34,47 @@ function ChangePasswordPage() {
 
   if (isSuccess) {
     return (
-      <main className="linear-auth-container">
-        <div className="linear-auth-card" style={{ textAlign: 'center' }}>
-          <div style={{ width: '48px', height: '48px', background: '#f0fdf4', color: '#18794e', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: '20px', fontWeight: 'bold' }}>✓</div>
-          <h1 className="linear-auth-title">Password updated</h1>
-          <p className="linear-auth-description">Redirecting you to the home page...</p>
+      <main className="auth-page-wrapper">
+        <div className="auth-content-box" style={{ textAlign: 'center' }}>
+          <div style={{ width: '48px', height: '48px', background: '#f0fdf4', color: '#18794e', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', fontSize: '20px' }}>✓</div>
+          <h1 className="brand-text" style={{ fontSize: '20px' }}>Password updated</h1>
+          <p className="auth-secondary-action">Redirecting you to the home page...</p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="linear-auth-container">
-      <div className="linear-auth-card">
-        <header style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'flex-start' }}>
-          <div className="brand-area" onClick={() => navigate('/')}>
-            <img className="brand-mark" src={brandMark} alt="" />
-            <span className="brand-text">Roombook</span>
-          </div>
-          <h1 className="linear-auth-title">Update password</h1>
+    <main className="auth-page-wrapper">
+      <div className="auth-content-box">
+        <header className="auth-brand-center" onClick={() => navigate('/')}>
+          <img className="brand-mark" src={brandMark} alt="" />
+          <span className="brand-text">Roombook</span>
         </header>
-        <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <input className="linear-input" type="password" placeholder="Current Password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
-          <input className="linear-input" type="password" placeholder="New Password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
-          <input className="linear-input" type="password" placeholder="Confirm New Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
-          {errorMessage && <p style={{ fontSize: '13px', color: '#e5484d' }}>{errorMessage}</p>}
-          <button className="linear-primary-button" type="submit" disabled={isSubmitting}>Update password</button>
-          <button className="nav-menu-item" type="button" onClick={() => navigate('/')}>Cancel</button>
+
+        <form className="auth-form" onSubmit={handleChangePassword}>
+          <div className="auth-input-group">
+            <label className="auth-label">Current Password</label>
+            <input className="auth-input" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required placeholder="••••••••" autoFocus />
+          </div>
+          <div className="auth-input-group">
+            <label className="auth-label">New Password</label>
+            <input className="auth-input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required placeholder="At least 4 characters" />
+          </div>
+          <div className="auth-input-group">
+            <label className="auth-label">Confirm New Password</label>
+            <input className="auth-input" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required placeholder="••••••••" />
+          </div>
+          
+          {errorMessage && <p className="linear-error-message" style={{ textAlign: 'center' }}>{errorMessage}</p>}
+          
+          <button className="auth-submit-button" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Updating...' : 'Update Password'}
+          </button>
+          
+          <button className="nav-menu-item" type="button" onClick={() => navigate('/')} style={{ marginTop: '8px' }}>
+            Cancel
+          </button>
         </form>
       </div>
     </main>

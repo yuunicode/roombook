@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AppUser } from '../stores';
 import Dialog from './ui/Dialog';
-import { AppIcon } from './index';
 
 type ReservationStatus = {
   id: string;
@@ -108,10 +107,7 @@ function ReservationStatusDialog({
           <>
             <div className="status-info-group">
               <span className="status-info-label">예약자</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div className="card-icon-box" style={{ width: '28px', height: '28px', borderRadius: '8px' }}><AppIcon name="users" style={{ width: '14px' }} /></div>
-                <span className="status-info-value" style={{ fontWeight: 600 }}>{reservation.creatorEmail.split('@')[0]}</span>
-              </div>
+              <span className="status-info-value" style={{ fontWeight: 600 }}>{reservation.creatorEmail.split('@')[0]}</span>
             </div>
             <div className="status-info-group">
               <span className="status-info-label">참석자</span>

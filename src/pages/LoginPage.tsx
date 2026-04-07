@@ -25,30 +25,47 @@ function LoginPage() {
   };
 
   return (
-    <main className="linear-auth-container">
-      <div className="linear-auth-card">
-        <header style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'flex-start' }}>
-          <div className="brand-area" onClick={() => navigate('/')}>
-            <img className="brand-mark" src={brandMark} alt="" />
-            <span className="brand-text">Roombook</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <h1 className="linear-auth-title">Log in</h1>
-            <p className="linear-auth-description">Enter your email and password to access your account.</p>
-          </div>
+    <main className="auth-page-wrapper">
+      <div className="auth-content-box">
+        <header className="auth-brand-center" onClick={() => navigate('/')}>
+          <img className="brand-mark" src={brandMark} alt="" />
+          <span className="brand-text">Roombook</span>
         </header>
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-soft)' }}>Email</label>
-            <input className="linear-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="name@company.com" />
+
+        <form className="auth-form" onSubmit={handleLogin}>
+          <div className="auth-input-group">
+            <label className="auth-label">Email</label>
+            <input 
+              className="auth-input" 
+              type="email" 
+              value={email} 
+              onChange={(e) => setEmail(e.target.value)} 
+              required 
+              placeholder="name@company.com" 
+              autoFocus
+            />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-soft)' }}>Password</label>
-            <input className="linear-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••" />
+          <div className="auth-input-group">
+            <label className="auth-label">Password</label>
+            <input 
+              className="auth-input" 
+              type="password" 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+              required 
+              placeholder="••••••••" 
+            />
           </div>
-          {errorMessage && <p style={{ fontSize: '13px', color: '#e5484d' }}>{errorMessage}</p>}
-          <button className="linear-primary-button" type="submit" disabled={isSubmitting}>{isSubmitting ? 'Signing in...' : 'Sign in'}</button>
-          <button className="nav-menu-item" type="button" onClick={() => navigate('/')} style={{ textAlign: 'center' }}>Cancel</button>
+          
+          {errorMessage && <p className="linear-error-message" style={{ textAlign: 'center' }}>{errorMessage}</p>}
+          
+          <button className="auth-submit-button" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? 'Signing in...' : 'Sign in'}
+          </button>
+          
+          <button className="nav-menu-item" type="button" onClick={() => navigate('/')} style={{ marginTop: '8px' }}>
+            Cancel
+          </button>
         </form>
       </div>
     </main>
