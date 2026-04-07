@@ -95,6 +95,27 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+async def change_password(
+    user_id: str,
+    current_password: str,
+    new_password: str,
+    db: AsyncSession,
+) -> bool:
+    """사용자의 비밀번호를 변경합니다. 성공 시 True를 반환합니다."""
+    user = await _find_user_by_id(db, user_id)
+    if user is None:
+        return False
+    
+    # 현재 비밀번호 확인
+    if not verify_password(current_password, user.password_hash):
+        return False
+    
+    # 새 비밀번호로 업데이트
+    user.password_hash = hash_password(new_password)
+    db.add(user)
+    return True
+
+
 async def _find_user_by_email(db: AsyncSession, email: str) -> User | None:
     # 이메일 정규화 후 users 테이블에서 사용자를 찾는다.
     return await find_user_by_email_ci(db, email)

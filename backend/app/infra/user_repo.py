@@ -4,6 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infra.user import User
 
 
+def add_user(db: AsyncSession, user: User) -> None:
+    db.add(user)
+
+
 async def find_user_by_id(db: AsyncSession, user_id: str) -> User | None:
     row = await db.execute(select(User).where(User.id == user_id))
     return row.scalar_one_or_none()

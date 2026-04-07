@@ -22,7 +22,7 @@ app.add_middleware(
     allow_headers=["*"],  # 요청헤더 전부 허용 (Authorization, Content-Type, etc)
 )
 
-app.include_router(auth_router)
-app.include_router(timetable_router)
-app.include_router(reservation_router)
-app.include_router(users_router)
+app.include_router(auth_router, prefix="/api")
+app.include_router(timetable_router, prefix="/api")
+app.include_router(reservation_router, prefix="/api")
+app.include_router(users_router, prefix="/api")

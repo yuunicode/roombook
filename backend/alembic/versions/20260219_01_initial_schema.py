@@ -88,7 +88,7 @@ def upgrade() -> None:
         {
             "id": "1",
             "name": "관리자",
-            "email": "admin@ecminer.com",
+            "email": "test@ecminer.com",
             "password_hash": bcrypt.hashpw(b"ecminer", bcrypt.gensalt()).decode("utf-8"),
         },
     )

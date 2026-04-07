@@ -11,7 +11,14 @@ from app.core.settings import (
     SESSION_COOKIE_SECURE,
 )
 from app.infra.db import get_db_session
-from app.service.auth_service import AuthUser, authenticate_user, create_session_token, get_user_from_session_token
+from app.service.admin_service import ensure_admin_user
+from app.service.auth_service import (
+    AuthUser,
+    authenticate_user,
+    change_password,
+    create_session_token,
+    get_user_from_session_token,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -19,6 +26,11 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 class LoginRequest(BaseModel):
     email: str
     password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 
 class UserResponse(BaseModel):
@@ -51,6 +63,7 @@ async def login(
     db: AsyncSession = Depends(get_db_session),
 ) -> AuthResponse | JSONResponse:
     # 이메일/비밀번호를 검증하고 성공 시 1년 만료 세션 쿠키를 발급한다.
+    await ensure_admin_user(db)
     user = await authenticate_user(payload.email, payload.password, db)
     if user is None:
         return _unauthorized_response("이메일 또는 비밀번호가 올바르지 않습니다.")
@@ -104,3 +117,48 @@ def _unauthorized_response(message: str) -> JSONResponse:
             }
         },
     )
+
+
+@router.post(
+    "/change-password",
+    response_model=AuthResponse,
+    responses={
+        401: {"model": ErrorResponse},
+        400: {"model": ErrorResponse},
+    },
+)
+async def change_password_endpoint(
+    payload: ChangePasswordRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> AuthResponse | JSONResponse:
+    # 로그인 사용자의 비밀번호를 변경한다.
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if token is None:
+        return _unauthorized_response("로그인이 필요합니다.")
+
+    user = await get_user_from_session_token(token, db)
+    if user is None:
+        return _unauthorized_response("로그인이 필요합니다.")
+
+    # 비밀번호 변경
+    success = await change_password(
+        user.id,
+        payload.current_password,
+        payload.new_password,
+        db,
+    )
+    
+    if not success:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "error": {
+                    "code": "INVALID_PASSWORD",
+                    "message": "현재 비밀번호가 올바르지 않습니다.",
+                }
+            },
+        )
+    
+    await db.commit()
+    return AuthResponse(user=_to_user_response(user))

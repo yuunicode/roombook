@@ -1,9 +1,11 @@
+/* Reset: 기본 브라우저 여백/박스 계산 초기화 */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
+/* Global: 앱 기본 폰트/배경/텍스트 색상 */
 body {
   font-family: 'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -16,36 +18,130 @@ button {
   cursor: pointer;
 }
 
-.home-page {
+/* Timetable Page: 메인 페이지 레이아웃 */
+.timetable-page {
   min-height: 100vh;
-  padding: 28px 24px 40px;
-  max-width: 1100px;
-  margin: 0 auto;
+  width: 100%;
+  padding: clamp(8px, 1.3vw, 16px) clamp(12px, 2.2vw, 28px) 20px;
+  margin: 0;
 }
 
-.top-bar {
+/* Timetable Page: 상단 헤더 영역 */
+.app-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
-  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: none;
+  margin-bottom: 10px;
 }
 
-.app-title {
-  font-size: 32px;
-  font-weight: 800;
-  margin-bottom: 8px;
+.brand-area {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.app-subtitle {
-  color: #435675;
+.brand-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #d7ebff;
+}
+
+.brand-text {
   font-size: 15px;
+  font-weight: 700;
+  color: #2d4f89;
 }
 
-.top-bar-actions {
+/* Timetable Page: 주간/월간 모드 토글 버튼 */
+.page-view-toggle {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.page-view-button {
+  height: 34px;
+  border: 1px solid #d5e0f6;
+  border-radius: 999px;
+  background-color: #f8fbff;
+  color: #4a6492;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 12px;
+}
+
+.page-view-button.active {
+  background-color: #5d86db;
+  border-color: #5d86db;
+  color: #ffffff;
+}
+
+/* Header Action: 로그인 아이콘/이름 */
+.user-area {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+}
+
+.soft-icon-button {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #dcecff;
+  border-radius: 999px;
+  background-color: #eaf5ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-icon-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background-color: #8fb8e9;
+}
+
+.user-name {
+  font-size: 13px;
+  color: #2f4f8e;
+  font-weight: 700;
+}
+
+.user-name-button {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 13px;
+  color: #2f4f8e;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.user-menu-button {
+  border: none;
+  background: transparent;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #5a7fa3;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.user-menu-button:hover {
+  background-color: #f0f0f0;
 }
 
 .primary-button,
@@ -85,6 +181,133 @@ button {
   color: #2f4f8e;
 }
 
+/* Timetable Page: 좌측 회의실 사이드바 + 우측 타임테이블 */
+.timetable-board {
+  background-color: #ffffff;
+  border: 1px solid #d9e3f8;
+  border-radius: 14px;
+  box-shadow: 0 10px 28px rgba(15, 45, 88, 0.08);
+  padding: 12px;
+}
+
+.timetable-layout {
+  display: grid;
+  grid-template-columns: clamp(130px, 14vw, 180px) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.room-sidebar {
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-self: stretch;
+}
+
+.sidebar-card {
+  background-color: #ffffff;
+  border: 1px solid #dce7fb;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(15, 45, 88, 0.06);
+  padding: 10px;
+}
+
+.sidebar-card-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #4a6391;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.room-button {
+  border: 1px solid #dce7f8;
+  background-color: #f3f8ff;
+  color: #4e6792;
+  border-radius: 8px;
+  height: 36px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: lowercase;
+  width: 100%;
+}
+
+.room-button + .room-button {
+  margin-top: 8px;
+}
+
+.room-button.active {
+  background-color: #5d86db;
+  border-color: #5d86db;
+  color: #ffffff;
+}
+
+.upcoming-panel {
+  margin-top: 0;
+}
+
+.upcoming-empty {
+  font-size: 12px;
+  color: #6c7f9f;
+  line-height: 1.4;
+}
+
+.upcoming-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.upcoming-item {
+  border: 1px solid #c8d8f4;
+  border-radius: 10px;
+  background-color: #f1f6ff;
+  padding: 9px;
+}
+
+.upcoming-item-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #3f649d;
+  margin-bottom: 3px;
+}
+
+.upcoming-item-meta {
+  font-size: 11px;
+  color: #6a82aa;
+}
+
+.timetable-main {
+  min-width: 0;
+}
+
+.timetable-main-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.calendar-control-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.calendar-period-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #355389;
+  min-width: 110px;
+  text-align: center;
+}
+
+/* Card: 타임테이블 카드/회의목록 카드 공통 스타일 */
 .timetable-card,
 .meeting-list-card {
   background-color: #ffffff;
@@ -97,9 +320,9 @@ button {
 .section-title {
   font-size: 22px;
   font-weight: 800;
-  margin-bottom: 14px;
 }
 
+/* React Big Calendar: 래퍼/툴바/그리드 스타일 */
 .rbc-wrapper {
   border: 1px solid #dce4f6;
   border-radius: 10px;
@@ -108,11 +331,61 @@ button {
 }
 
 .rbc-toolbar {
-  display: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  gap: 10px;
+}
+
+.rbc-btn-group {
+  display: flex;
+  gap: 6px;
+}
+
+.rbc-toolbar button {
+  height: 34px;
+  border: 1px solid #d5e0f6;
+  border-radius: 999px;
+  background-color: #f8fbff;
+  color: #4a6492;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 12px;
+  transition: 120ms ease;
+}
+
+.rbc-toolbar button:hover {
+  border-color: #bfd0ef;
+  background-color: #f1f6ff;
+}
+
+.rbc-toolbar button.rbc-active {
+  background-color: #5d86db;
+  border-color: #5d86db;
+  color: #ffffff;
+}
+
+.rbc-toolbar-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: #355389;
 }
 
 .rbc-time-view {
   border: none;
+}
+
+.rbc-time-header {
+  position: static;
+}
+
+.rbc-time-content {
+  overflow-y: hidden;
+}
+
+.rbc-allday-cell {
+  display: none;
 }
 
 .rbc-time-header-content,
@@ -122,28 +395,43 @@ button {
 }
 
 .rbc-header {
-  background-color: #f2f6ff;
+  background-color: #f7f9fe;
   padding: 10px 0;
-  font-weight: 700;
-  font-size: 13px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #57709b;
 }
 
 .rbc-time-gutter .rbc-timeslot-group {
   font-size: 12px;
-  color: #4f6284;
+  color: #6a7f9e;
 }
 
-.rbc-day-slot .rbc-time-slot {
-  min-height: 26px;
+.rbc-timeslot-group {
+  min-height: 58px;
 }
 
 .rbc-event {
-  background-color: #0f4bcb;
+  background-color: #6c93e3;
   border: none;
   border-radius: 8px;
-  padding: 2px 6px;
+  padding: 5px 8px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
+}
+
+.rbc-day-slot .rbc-events-container {
+  margin-right: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
+.rbc-day-slot .rbc-event {
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  margin-left: 0;
+  margin-right: 0;
 }
 
 .rbc-event-label {
@@ -151,13 +439,82 @@ button {
 }
 
 .rbc-slot-selection {
-  background-color: rgba(23, 73, 199, 0.14);
+  background-color: rgba(108, 147, 227, 0.18);
 }
 
+.weekly-event-card {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 1px;
+  overflow: hidden;
+  line-height: 1.2;
+}
+
+.weekly-event-card p {
+  margin: 0;
+}
+
+.weekly-event-owner {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f3c72;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.weekly-event-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #173460;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.weekly-event-attendees {
+  font-size: 12px;
+  font-weight: 500;
+  color: #355a92;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.weekly-calendar .rbc-event {
+  background-color: #dce8ff;
+  border: 1px solid #bfd3ff;
+  padding: 8px 10px;
+}
+
+.weekly-calendar .rbc-event-content {
+  height: 100%;
+  overflow: hidden;
+}
+
+.weekly-calendar .rbc-timeslot-group {
+  min-height: 136px;
+}
+
+.weekly-calendar .rbc-time-gutter .rbc-timeslot-group {
+  font-size: 14px;
+}
+
+.monthly-calendar .rbc-event-content {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Dialog Common: 로그인/예약 다이얼로그 공통 오버레이 */
 .dialog-backdrop {
   position: fixed;
   inset: 0;
-  background-color: rgba(6, 19, 42, 0.45);
+  background:
+    radial-gradient(circle at top, rgba(94, 106, 210, 0.08), transparent 28%),
+    rgba(15, 18, 28, 0.42);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -168,70 +525,123 @@ button {
 
 .dialog-card {
   width: 100%;
-  max-width: 360px;
-  background-color: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 14px 36px rgba(7, 21, 44, 0.24);
-  padding: 24px;
+  max-width: 380px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 249, 251, 0.98) 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 24px 80px rgba(15, 18, 28, 0.24);
+  padding: 20px;
+  backdrop-filter: blur(16px);
 }
 
 .dialog-title {
-  font-size: 28px;
-  font-weight: 800;
-  margin-bottom: 16px;
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  letter-spacing: -0.03em;
+}
+
+.dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 14px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dialog-eyebrow {
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.dialog-description {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.dialog-field-label {
+  display: block;
+  margin: 10px 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .dialog-input {
   width: 100%;
-  height: 42px;
-  border: 1px solid #d5dff2;
+  height: 38px;
+  border: 1px solid var(--border);
   border-radius: 8px;
+  background: rgba(251, 251, 252, 0.96);
   padding: 0 12px;
-  font-size: 14px;
+  font-size: 13px;
+  color: var(--text);
 }
 
 .dialog-input + .dialog-input {
-  margin-top: 10px;
+  margin-top: 0;
 }
 
 .dialog-input:focus {
   outline: none;
-  border-color: #2b63e6;
-  box-shadow: 0 0 0 3px rgba(43, 99, 230, 0.16);
+  border-color: rgba(94, 106, 210, 0.45);
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.08);
 }
 
 .dialog-login-button {
   width: 100%;
-  height: 42px;
-  border: none;
+  height: 36px;
   border-radius: 8px;
-  margin-top: 12px;
-  background-color: #1749c7;
+  margin-top: 0;
+  background: #111318;
   color: #ffffff;
-  font-size: 14px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 700;
 }
 
+.dialog-footer {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.dialog-error-text {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #b42318;
+}
+
+/* Reservation Dialog: 예약 카드 레이아웃/입력 UI */
 .reservation-dialog-card {
   width: min(1160px, 96vw);
-  min-height: 580px;
+  min-height: 560px;
   max-height: calc(100dvh - 40px);
-  background-color: #ffffff;
-  border-radius: 14px;
-  box-shadow: 0 20px 48px rgba(6, 20, 44, 0.28);
-  padding: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.985) 0%, rgba(248, 249, 251, 0.985) 100%);
+  border-radius: 20px;
+  box-shadow: 0 28px 100px rgba(15, 18, 28, 0.22);
+  padding: 16px;
   display: grid;
   grid-template-columns: minmax(560px, 1.25fr) minmax(340px, 1fr);
-  gap: 18px;
+  gap: 14px;
   position: relative;
   overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.74);
+  backdrop-filter: blur(18px);
 }
 
 .reservation-dialog-left,
 .reservation-dialog-right {
-  border: 1px solid #e2e9f8;
-  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
   padding: 14px;
+  background: rgba(252, 252, 253, 0.84);
   min-height: 0;
   overflow-y: auto;
 }
@@ -243,18 +653,19 @@ button {
 }
 
 .reservation-dialog-title {
-  font-size: 26px;
-  font-weight: 800;
-  margin-bottom: 10px;
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  letter-spacing: -0.03em;
 }
 
 .workday-picker {
-  --rdp-accent-color: #1749c7;
-  --rdp-day-height: 40px;
-  --rdp-day-width: 40px;
+  --rdp-accent-color: rgba(16, 18, 24, 0.42);
+  --rdp-day-height: 36px;
+  --rdp-day-width: 36px;
   --rdp-weekday-padding: 0;
-  --rdp-nav_button-height: 30px;
-  --rdp-nav_button-width: 30px;
+  --rdp-nav_button-height: 26px;
+  --rdp-nav_button-width: 26px;
   --rdp-day_button-border-radius: 999px;
   width: 100%;
   max-width: none;
@@ -274,9 +685,9 @@ button {
 }
 
 .workday-picker .rdp-weekday {
-  font-size: 13px;
-  color: #5f7398;
-  height: 38px;
+  font-size: 11px;
+  color: var(--text-soft);
+  height: 32px;
   text-align: center;
 }
 
@@ -289,9 +700,9 @@ button {
 }
 
 .workday-picker .rdp-day_button {
-  font-size: 14px;
-  width: 36px;
-  height: 36px;
+  font-size: 12px;
+  width: 32px;
+  height: 32px;
   margin: 0 auto;
   display: inline-flex;
   align-items: center;
@@ -299,7 +710,11 @@ button {
 }
 
 .workday-picker .rdp-selected .rdp-day_button {
-  font-weight: 700;
+  font-weight: 600;
+  background: rgba(16, 18, 24, 0.1);
+  color: var(--text);
+  border: none;
+  box-shadow: none;
 }
 
 .workday-picker .rdp-weekday:nth-child(6),
@@ -312,16 +727,16 @@ button {
 .selected-day-text {
   width: 100%;
   margin: 10px 0;
-  font-size: 14px;
-  color: #375383;
+  font-size: 12px;
+  color: var(--text);
   font-weight: 600;
 }
 
 .selected-time-text {
   width: 100%;
   margin: 0 0 10px;
-  font-size: 13px;
-  color: #4b5f82;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .time-slot-list {
@@ -336,43 +751,48 @@ button {
 }
 
 .time-slot-button {
-  height: 34px;
-  border: 1px solid #d6e0f6;
+  height: 30px;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background-color: #ffffff;
-  color: #334f80;
-  font-size: 12px;
+  background-color: rgba(255, 255, 255, 0.92);
+  color: var(--text-muted);
+  font-size: 11px;
   font-weight: 600;
 }
 
 .time-slot-button.start,
 .time-slot-button.end {
-  border-color: #1749c7;
-  background-color: #1749c7;
+  border-color: #101218;
+  background-color: #101218;
   color: #ffffff;
 }
 
 .time-slot-button.in-range {
-  border-color: #9fb7ef;
-  background-color: #e8f0ff;
-  color: #1749c7;
+  border-color: rgba(16, 18, 24, 0.08);
+  background-color: rgba(16, 18, 24, 0.05);
+  color: var(--text);
 }
 
 .reservation-label {
   display: block;
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 700;
   margin: 8px 0 6px;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .reservation-input,
 .reservation-textarea {
   width: 100%;
-  border: 1px solid #d5dff2;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px 12px;
-  font-size: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 9px 11px;
+  font-size: 13px;
   font-family: inherit;
+  color: var(--text);
 }
 
 .reservation-textarea {
@@ -380,16 +800,109 @@ button {
   resize: vertical;
 }
 
+.reservation-agenda-textarea {
+  min-height: 120px;
+}
+
+.reservation-file-input {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.reservation-attendee-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.reservation-attendee-chip {
+  border: 1px solid rgba(16, 18, 24, 0.08);
+  border-radius: 999px;
+  background-color: rgba(16, 18, 24, 0.05);
+  color: var(--text);
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.reservation-attendee-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.reservation-attendee-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.88);
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.reservation-attendee-option:hover {
+  border-color: rgba(16, 18, 24, 0.1);
+  background-color: rgba(16, 18, 24, 0.04);
+}
+
 .reservation-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 10px;
+}
+
+.reservation-actions .secondary-button,
+.reservation-actions .primary-button {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border: none;
+  box-shadow: none;
+  background-image: none;
+}
+
+.reservation-actions .secondary-button {
+  background: transparent;
+  color: var(--text-soft);
+}
+
+.reservation-actions .primary-button {
+  background: rgba(16, 18, 24, 0.05);
+  color: var(--text);
+  border: none;
+}
+
+.reservation-actions .secondary-button:hover,
+.reservation-actions .primary-button:hover {
+  background: rgba(16, 18, 24, 0.05);
+  color: var(--text);
+}
+
+.danger-button {
+  background-color: #ffe3e3;
+  color: #b42318;
+}
+
+.danger-button:hover {
+  background-color: #ffd1d1;
 }
 
 .reservation-actions .primary-button:disabled {
-  background-color: #97b1e8;
+  background: rgba(16, 18, 24, 0.04);
+  color: var(--text-soft);
   cursor: not-allowed;
+  border: none;
 }
 
 .reservation-close-button {
@@ -398,33 +911,91 @@ button {
   right: 14px;
   width: 30px;
   height: 30px;
-  border: none;
+  border: 1px solid var(--border);
   border-radius: 999px;
-  background-color: #eef3ff;
-  color: #3c5e99;
-  font-size: 14px;
-  font-weight: 700;
+  background-color: rgba(255, 255, 255, 0.9);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
 }
 
+.reservation-status-dialog-card {
+  width: min(640px, 94vw);
+  max-height: calc(100dvh - 40px);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.985) 0%, rgba(248, 249, 251, 0.985) 100%);
+  border-radius: 20px;
+  box-shadow: 0 28px 100px rgba(15, 18, 28, 0.22);
+  padding: 18px;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(18px);
+}
+
+.reservation-status-content {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(252, 252, 253, 0.76);
+  padding: 14px;
+  max-height: calc(100dvh - 120px);
+  overflow-y: auto;
+}
+
+.reservation-status-time {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.reservation-status-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.reservation-status-field {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 10px;
+}
+
+.reservation-status-label {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--text-soft);
+  margin-bottom: 4px;
+}
+
+.reservation-status-value {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+/* Floating Action Button: 예약 생성 + 버튼 */
 .fab-add {
   position: fixed;
   right: 24px;
   bottom: 24px;
   width: 54px;
   height: 54px;
-  border: none;
+  border: 1px solid rgba(16, 18, 24, 0.1);
   border-radius: 999px;
-  background-color: #1749c7;
+  background: rgba(255, 255, 255, 0.92);
   color: #ffffff;
-  font-size: 28px;
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 400;
   line-height: 1;
-  box-shadow: 0 10px 24px rgba(10, 39, 94, 0.28);
+  box-shadow: 0 18px 44px rgba(16, 18, 24, 0.12);
+  backdrop-filter: blur(12px);
 }
 
 .fab-add:hover {
-  background-color: #113a9f;
+  background: #ffffff;
 }
 
+/* My Meetings Page: 목록 페이지 스타일 */
 .my-meetings-page {
   min-height: 100vh;
   max-width: 840px;
@@ -460,20 +1031,1271 @@ button {
   font-size: 14px;
 }
 
+/* Admin Users Page: 관리자 계정 생성 화면 */
+.admin-page {
+  min-height: 100vh;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.admin-card {
+  background-color: #ffffff;
+  border: 1px solid #d9e3f8;
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(15, 45, 88, 0.08);
+  padding: 14px;
+}
+
+.admin-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #173460;
+}
+
+.admin-subtitle {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #5f7398;
+}
+
+.admin-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: #2f4f8e;
+}
+
+.admin-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.admin-input {
+  width: 100%;
+  height: 40px;
+  border: 1px solid #d5dff2;
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+.admin-status {
+  font-size: 13px;
+  color: #204474;
+}
+
+.admin-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.admin-users-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.admin-users-table th,
+.admin-users-table td {
+  border: 1px solid #d9e3f8;
+  padding: 8px;
+  text-align: left;
+  font-size: 13px;
+  color: #1f3c72;
+}
+
+.admin-users-table th {
+  background-color: #f2f7ff;
+  font-weight: 700;
+}
+
+.admin-cell-input {
+  width: 100%;
+  min-width: 120px;
+  height: 34px;
+  border: 1px solid #d5dff2;
+  border-radius: 6px;
+  padding: 0 8px;
+  font-size: 13px;
+}
+
+.admin-cell-readonly {
+  font-size: 12px;
+  color: #5f7398;
+}
+
+.admin-save-button {
+  height: 34px;
+  padding: 0 12px;
+}
+
+/* Linear-style Auth Page (Full Page) */
+.linear-auth-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: #ffffff;
+  padding: 40px 20px;
+}
+
+.linear-auth-card {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.linear-auth-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.linear-auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.linear-auth-brand .brand-text {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: #101218;
+}
+
+.linear-auth-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linear-auth-title {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  color: #101218;
+  margin: 0;
+}
+
+.linear-auth-description {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #68707d;
+  margin: 0;
+}
+
+.linear-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.linear-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.linear-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #8b93a1;
+}
+
+.linear-input {
+  width: 100%;
+  height: 40px;
+  background: #f7f8fa;
+  border: 1px solid #e6e8ec;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: #101218;
+  transition: all 0.2s;
+}
+
+.linear-input:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #101218;
+  box-shadow: 0 0 0 4px rgba(16, 18, 24, 0.05);
+}
+
+.linear-primary-button {
+  width: 100%;
+  height: 40px;
+  background: #101218;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-top: 8px;
+}
+
+.linear-primary-button:hover {
+  background: #2a2e37;
+}
+
+.linear-primary-button:disabled {
+  background: #e6e8ec;
+  color: #8b93a1;
+  cursor: not-allowed;
+}
+
+.linear-secondary-button {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #68707d;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 8px;
+  transition: color 0.2s;
+  text-align: center;
+}
+
+.linear-secondary-button:hover {
+  color: #101218;
+}
+
+.linear-error-message {
+  font-size: 13px;
+  color: #e5484d;
+  margin: 0;
+}
+
+.linear-success-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 20px;
+}
+
+.linear-success-icon {
+  width: 48px;
+  height: 48px;
+  background: #f0fdf4;
+  color: #18794e;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+/* User Profile & Dropdown */
+.user-profile-wrapper {
+  position: relative;
+}
+
+.user-profile-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+
+.user-profile-toggle:hover {
+  background: rgba(16, 18, 24, 0.04);
+}
+
+.user-name-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.chevron-icon {
+  width: 12px;
+  height: 12px;
+  color: var(--text-soft);
+  transition: transform 0.2s;
+}
+
+.chevron-icon.open {
+  transform: rotate(180deg);
+}
+
+.user-dropdown-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 200px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  padding: 6px;
+  z-index: 1000;
+  animation: popover-fade-in 0.2s ease-out;
+}
+
+@keyframes popover-fade-in {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.popover-section {
+  padding: 8px 12px;
+}
+
+.popover-user-email {
+  font-size: 11px;
+  color: var(--text-soft);
+  word-break: break-all;
+}
+
+.popover-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
+}
+
+.popover-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.popover-item:hover {
+  background: rgba(94, 106, 210, 0.08);
+  color: var(--accent);
+}
+
+.logout-item:hover {
+  background: rgba(180, 35, 24, 0.08);
+  color: #b42318;
+}
+
+/* Linear-inspired refresh */
+:root {
+  --bg: #f7f8fa;
+  --panel: #ffffff;
+  --panel-muted: #fafafb;
+  --panel-elevated: #fcfcfd;
+  --border: #e6e8ec;
+  --border-strong: #d9dde3;
+  --text: #101218;
+  --text-muted: #68707d;
+  --text-soft: #8b93a1;
+  --accent: #5e6ad2;
+  --accent-soft: rgba(94, 106, 210, 0.1);
+  --shadow: 0 1px 2px rgba(16, 18, 24, 0.04), 0 12px 32px rgba(16, 18, 24, 0.06);
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(94, 106, 210, 0.06), transparent 28%),
+    linear-gradient(180deg, #fafafb 0%, #f4f5f7 100%);
+  color: var(--text);
+}
+
+.timetable-page {
+  padding: 18px 20px 24px;
+}
+
+/* App Layout & Main Nav Header */
+.app-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-nav-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  height: 56px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr; /* 좌, 중, 우 3단 분할 */
+  align-items: center;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.nav-menu-item {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.nav-menu-item:hover {
+  color: var(--text);
+  background: rgba(16, 18, 24, 0.04);
+}
+
+.nav-menu-item.active {
+  color: var(--text);
+  background: rgba(16, 18, 24, 0.06);
+  font-weight: 600;
+}
+
+.main-content {
+  flex: 1;
+  padding: 24px;
+  max-width: 1440px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Dashboard Styles */
+.dashboard-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding-top: 40px;
+}
+
+.page-header-content {
+  margin-bottom: 48px;
+  text-align: center;
+}
+
+.page-title {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+.page-subtitle {
+  font-size: 16px;
+  color: var(--text-soft);
+}
+
+.dashboard-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dashboard-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dashboard-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.04);
+}
+
+.card-icon-box {
+  width: 48px;
+  height: 48px;
+  background: #f7f8fa;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-main-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--text-muted);
+}
+
+.card-info {
+  flex: 1;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.card-desc {
+  font-size: 14px;
+  color: var(--text-soft);
+}
+
+.card-arrow {
+  width: 20px;
+  height: 20px;
+  color: var(--border-strong);
+}
+
+.dashboard-list-section {
+  margin-top: 32px;
+  padding: 0 8px;
+}
+
+.section-small-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 16px;
+}
+
+.mini-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.mini-time {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  width: 50px;
+}
+
+.mini-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.mini-meta {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+/* Minutes Page Styles */
+.minutes-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding-top: 40px;
+}
+
+.minutes-form-container {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.linear-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.minutes-textarea {
+  width: 100%;
+  min-height: 300px;
+  background: #f7f8fa;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 15px;
+  line-height: 1.6;
+  resize: vertical;
+  color: var(--text);
+  font-family: inherit;
+}
+
+.minutes-textarea:focus {
+  outline: none;
+  background: #ffffff;
+  border-color: #101218;
+}
+
+.attendee-select-placeholder {
+  padding: 12px 16px;
+  background: #f7f8fa;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 14px;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.save-button {
+  width: auto;
+  padding: 0 24px;
+}
+
+/* Cleanup old Header related styles */
+.app-header {
+  /* location change, now using main-nav-header */
+}
+
+/* Timetable Container */
+.timetable-page-container {
+  padding-top: 12px;
+}
+
+/* User Profile Toggle Active State */
+.user-profile-toggle.active {
+  background: rgba(16, 18, 24, 0.06);
+}
+
+/* Responsive Fixes for New Header */
 @media (max-width: 900px) {
-  .top-bar {
-    flex-direction: column;
+  .main-nav-header {
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    padding: 0 16px;
+  }
+  
+  .header-center {
+    justify-content: center;
+  }
+  
+  .nav-menu-item {
+    padding: 0 8px;
+    font-size: 12px;
+  }
+}
+
+/* Sidebar Refinement (Enhanced Linear Style) */
+.room-sidebar {
+  gap: 48px; /* 섹션 간 간격 더 확대 */
+  padding-top: 12px;
+}
+
+.sidebar-card {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-left: 2px;
+}
+
+.sidebar-card-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-soft);
+  text-transform: uppercase;
+}
+
+.room-button {
+  height: 44px; /* 높이 약간 확대 */
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 10px;
+  width: 100%;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-bottom: 4px;
+}
+
+.room-button-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.room-button-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.room-name-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.room-capacity-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: rgba(16, 18, 24, 0.05);
+  padding: 2px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.room-button:hover {
+  background: rgba(16, 18, 24, 0.04);
+  color: var(--text);
+}
+
+.room-button.active {
+  background: #ffffff;
+  border-color: var(--border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  color: var(--text);
+}
+
+.room-button.active .room-name-text {
+  font-weight: 700;
+}
+
+.room-button.active .room-capacity-tag {
+  background: rgba(94, 106, 210, 0.1);
+  color: var(--accent);
+}
+
+.room-button-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--text-soft);
+}
+
+.room-button.active .room-button-icon {
+  color: var(--accent);
+}
+
+/* Upcoming Items List */
+.upcoming-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.upcoming-item {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  padding: 10px 12px;
+  transition: all 0.2s ease;
+  text-align: left; /* 버튼 기본 중앙 정렬 해제 */
+  cursor: pointer;
+  display: block;
+}
+
+.upcoming-item:hover {
+  background: #ffffff;
+  border-color: var(--border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  transform: translateX(2px); /* 오른쪽으로 살짝 밀리는 효과로 인터랙션 강조 */
+}
+
+.upcoming-item-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.upcoming-item-meta {
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+.upcoming-empty {
+  padding: 8px 12px; /* 왼쪽 패딩 12px로 정렬 */
+  font-size: 13px;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+/* Add Reservation Button inside Sidebar (Lightened) */
+.sidebar-add-button {
+  width: 100%;
+  background: #ffffff;
+  color: var(--text);
+  border-radius: 12px;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: 1px solid var(--border);
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  text-align: left;
+}
+
+.sidebar-add-button:hover {
+  background: #fcfcfd;
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.sidebar-add-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.sidebar-add-description {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.timetable-layout {
+  grid-template-columns: 280px minmax(0, 1fr); /* 사이드바 너비 확대 */
+  gap: 48px;
+}
+
+.timetable-main {
+  min-width: 0;
+}
+
+.timetable-main-header {
+  margin-bottom: 8px;
+}
+
+.calendar-control-row {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--border);
+  justify-content: space-between;
+}
+
+.calendar-period-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.rbc-wrapper {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.rbc-month-view,
+.rbc-time-view {
+  border: none;
+  background: transparent;
+}
+
+.rbc-time-content,
+.rbc-time-header,
+.rbc-time-content > * ,
+.rbc-month-row,
+.rbc-row-content,
+.rbc-row-bg {
+  background: transparent;
+}
+
+.rbc-header {
+  background: transparent;
+  color: var(--text-soft);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.rbc-time-header-content,
+.rbc-time-gutter,
+.rbc-day-slot .rbc-time-slot,
+.rbc-month-row + .rbc-month-row,
+.rbc-day-bg + .rbc-day-bg {
+  border-color: var(--border) !important;
+}
+
+.rbc-time-gutter .rbc-timeslot-group,
+.rbc-toolbar-label {
+  color: var(--text-soft);
+}
+
+.rbc-time-gutter,
+.rbc-label {
+  font-size: 10px;
+  color: var(--text-soft);
+}
+
+.rbc-timeslot-group {
+  min-height: 40px;
+  flex: 1;
+}
+
+.weekly-calendar .rbc-timeslot-group {
+  min-height: 40px;
+  flex: 1;
+}
+
+.weekly-calendar .rbc-time-gutter .rbc-timeslot-group {
+  min-height: 40px;
+  flex: 1;
+}
+
+.weekly-calendar .rbc-time-slot,
+.weekly-calendar .rbc-day-slot .rbc-time-slot {
+  min-height: 18px;
+}
+
+.rbc-day-slot .rbc-events-container {
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+}
+
+.rbc-current-time-indicator {
+  background-color: var(--accent);
+  height: 1px;
+}
+
+.rbc-slot-selection {
+  background: rgba(94, 106, 210, 0.12);
+}
+
+.weekly-calendar .rbc-event,
+.monthly-calendar .rbc-event {
+  background: rgba(17, 24, 39, 0.08);
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  color: var(--text);
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.weekly-event-owner {
+  color: rgba(17, 24, 39, 0.72);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.weekly-event-title {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.weekly-event-attendees {
+  color: rgba(17, 24, 39, 0.58);
+  font-size: 9px;
+}
+
+.monthly-calendar .rbc-month-row {
+  min-height: 92px;
+}
+
+.monthly-calendar .rbc-date-cell {
+  padding: 6px 8px 0;
+  text-align: left;
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+.monthly-calendar .rbc-date-cell > a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.monthly-calendar .rbc-off-range-bg {
+  background: transparent;
+}
+
+.weekly-calendar .rbc-today,
+.monthly-calendar .rbc-today {
+  background: rgba(16, 18, 24, 0.04);
+}
+
+.monthly-calendar .rbc-day-bg + .rbc-day-bg,
+.monthly-calendar .rbc-month-row + .rbc-month-row {
+  border-left: 1px solid var(--border);
+}
+
+.monthly-calendar .rbc-row-content {
+  z-index: 2;
+  padding: 0 4px 4px;
+}
+
+.monthly-calendar .rbc-row-bg {
+  right: 0;
+}
+
+.monthly-calendar .rbc-event {
+  min-height: 18px;
+  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 1.3;
+  width: calc(100% - 6px) !important; /* 좌우 여백 확보로 넘침 방지 */
+  margin: 1px 3px !important; /* 중앙 정렬을 위한 마진 */
+  left: 0 !important;
+}
+
+/* 주말(토, 일) 칸 처리 (월요일 시작 기준 6, 7번째) */
+.monthly-calendar .rbc-day-bg:nth-child(6),
+.monthly-calendar .rbc-day-bg:nth-child(7),
+.monthly-calendar .rbc-header:nth-child(6),
+.monthly-calendar .rbc-header:nth-child(7) {
+  background-color: #f8f9fa !important; /* 배경을 아주 연한 회색으로 채움 */
+  border-color: #edf0f2 !important; /* 테두리도 연한 색으로 변경하여 일체감 부여 */
+}
+
+/* 주말 칸 내의 날짜 텍스트 등도 약간 흐리게 */
+.monthly-calendar .rbc-date-cell:nth-child(6),
+.monthly-calendar .rbc-date-cell:nth-child(7) {
+  color: var(--text-soft);
+  opacity: 0.6;
+}
+
+.monthly-calendar .rbc-show-more {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  background: transparent;
+}
+
+.dialog-card,
+.reservation-dialog-card,
+.reservation-status-dialog-card {
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.24);
+}
+
+.dialog-title,
+.reservation-dialog-title,
+.section-title,
+.admin-title {
+  color: var(--text);
+  letter-spacing: -0.03em;
+}
+
+.dialog-input,
+.reservation-input,
+.reservation-textarea,
+.admin-input,
+.admin-cell-input {
+  border: 1px solid var(--border);
+  background: #fbfbfc;
+  color: var(--text);
+}
+
+.dialog-input:focus,
+.reservation-input:focus,
+.reservation-textarea:focus,
+.admin-input:focus,
+.admin-cell-input:focus {
+  outline: none;
+  border-color: rgba(94, 106, 210, 0.45);
+  box-shadow: 0 0 0 3px rgba(94, 106, 210, 0.1);
+}
+
+.reservation-attendee-chip {
+  background: #f0f2ff;
+  border-color: rgba(94, 106, 210, 0.2);
+  color: var(--accent);
+}
+
+.reservation-attendee-option {
+  background: #fcfcfd;
+  border-color: var(--border);
+}
+
+.reservation-attendee-option:hover {
+  border-color: rgba(94, 106, 210, 0.22);
+  background: #f8f9ff;
+}
+
+.my-meetings-page,
+.admin-page {
+  max-width: 1040px;
+  padding: 24px 20px 40px;
+}
+
+.my-meetings-header,
+.page-title-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.page-title-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.my-meetings-header {
+  margin-bottom: 14px;
+}
+
+.meeting-list-card {
+  padding: 10px;
+}
+
+.meeting-item {
+  background: var(--panel-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.meeting-topic {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.admin-page {
+  gap: 14px;
+}
+
+.admin-title {
+  font-size: 24px;
+}
+
+.admin-users-table th {
+  background: #fafafb;
+  color: var(--text-soft);
+}
+
+.admin-users-table th,
+.admin-users-table td {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.fab-add {
+  width: 52px;
+  height: 52px;
+  border: 1px solid rgba(94, 106, 210, 0.28);
+  background: var(--accent);
+  box-shadow: 0 18px 48px rgba(94, 106, 210, 0.26);
+}
+
+/* Responsive: 모바일 폭 대응 */
+@media (max-width: 900px) {
+  .app-header {
+    flex-direction: row; /* 세로가 아닌 가로 유지 */
+    align-items: center;
+    justify-content: space-between;
   }
 
-  .top-bar-actions {
+  .user-area {
+    justify-content: flex-end;
+  }
+
+  .timetable-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .room-sidebar {
+    flex-direction: row;
+    align-self: stretch;
+  }
+
+  .room-button {
+    flex: 1;
+  }
+
+  .page-view-toggle {
     width: 100%;
-    justify-content: flex-start;
+  }
+
+  .page-view-button {
+    flex: 1;
+  }
+
+  .calendar-control-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rbc-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .rbc-toolbar-label {
+    text-align: center;
   }
 
   .reservation-dialog-card {
     grid-template-columns: 1fr;
     min-height: auto;
     max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 14px;
+  }
+
+  .reservation-dialog-left,
+  .reservation-dialog-right {
+    overflow-y: visible;
   }
 
   .time-slot-list {
@@ -481,6 +2303,7 @@ button {
   }
 }
 
+/* Responsive: 화면 높이 작을 때 다이얼로그 대응 */
 @media (max-height: 760px) {
   .dialog-backdrop {
     align-items: flex-start;
@@ -489,5 +2312,7 @@ button {
 
   .reservation-dialog-card {
     max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 }

@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DayPicker } from 'react-day-picker';
 import { ko } from 'date-fns/locale';
+import type { AppUser } from '../stores';
+import Dialog from './ui/Dialog';
 
 type ReservationDraft = {
   title: string;
-  attendees: string;
-  reference: string;
+  attendees: AppUser[];
+  externalAttendees?: string;
+  agenda: string;
+  minutesAttachment: string;
   start: Date;
   end: Date;
 };
@@ -13,6 +17,9 @@ type ReservationDraft = {
 type ReservationDialogProps = {
   isOpen: boolean;
   initialStart: Date;
+  initialEnd: Date;
+  currentUser: AppUser | null;
+  users: AppUser[];
   onClose: () => void;
   onConfirm: (draft: ReservationDraft) => void;
 };
@@ -64,23 +71,34 @@ function formatDuration(startLabel: string, endLabel: string) {
   return `${minutes}분`;
 }
 
-function ReservationDialog({ isOpen, initialStart, onClose, onConfirm }: ReservationDialogProps) {
+function ReservationDialog({
+  isOpen,
+  initialStart,
+  initialEnd,
+  currentUser,
+  users,
+  onClose,
+  onConfirm,
+}: ReservationDialogProps) {
   const [selectedDate, setSelectedDate] = useState(initialStart);
   const [activeMonth, setActiveMonth] = useState(
     new Date(initialStart.getFullYear(), initialStart.getMonth(), 1)
   );
   const [startTime, setStartTime] = useState<string | null>(toTimeLabel(initialStart));
-  const [endTime, setEndTime] = useState<string | null>(null);
+  const [endTime, setEndTime] = useState<string | null>(toTimeLabel(initialEnd));
   const [title, setTitle] = useState('');
-  const [attendees, setAttendees] = useState('');
-  const [reference, setReference] = useState('');
+  const [externalAttendees, setExternalAttendees] = useState('');
+  const [agenda, setAgenda] = useState('');
+  const [minutesAttachment, setMinutesAttachment] = useState('');
+  const [attendeeQuery, setAttendeeQuery] = useState('');
+  const [selectedAttendees, setSelectedAttendees] = useState<AppUser[]>([]);
 
   useEffect(() => {
     setSelectedDate(initialStart);
     setActiveMonth(new Date(initialStart.getFullYear(), initialStart.getMonth(), 1));
     setStartTime(toTimeLabel(initialStart));
-    setEndTime(null);
-  }, [initialStart, isOpen]);
+    setEndTime(toTimeLabel(initialEnd));
+  }, [initialStart, initialEnd, isOpen]);
 
   const normalizedRange = useMemo(() => {
     if (!startTime || !endTime) {
@@ -110,9 +128,20 @@ function ReservationDialog({ isOpen, initialStart, onClose, onConfirm }: Reserva
     [selectedDate]
   );
 
-  if (!isOpen) {
-    return null;
-  }
+  const filteredUsers = useMemo(() => {
+    const keyword = attendeeQuery.trim().toLowerCase();
+    if (!keyword) {
+      return [];
+    }
+    return users.filter((user) => {
+      if (selectedAttendees.some((attendee) => attendee.id === user.id)) {
+        return false;
+      }
+      return (
+        user.name.toLowerCase().includes(keyword) || user.email.toLowerCase().includes(keyword)
+      );
+    });
+  }, [attendeeQuery, selectedAttendees, users]);
 
   const handleTimeSlotClick = (slot: string) => {
     if (!startTime || (startTime && endTime)) {
@@ -153,6 +182,15 @@ function ReservationDialog({ isOpen, initialStart, onClose, onConfirm }: Reserva
     return '';
   };
 
+  const handleAddAttendee = (user: AppUser) => {
+    setSelectedAttendees((previous) => [...previous, user]);
+    setAttendeeQuery('');
+  };
+
+  const handleRemoveAttendee = (userId: string) => {
+    setSelectedAttendees((previous) => previous.filter((attendee) => attendee.id !== userId));
+  };
+
   const handleConfirm = () => {
     if (!title.trim() || !normalizedRange) {
       return;
@@ -175,140 +213,200 @@ function ReservationDialog({ isOpen, initialStart, onClose, onConfirm }: Reserva
 
     onConfirm({
       title: title.trim(),
-      attendees: attendees.trim(),
-      reference: reference.trim(),
+      attendees: selectedAttendees,
+      externalAttendees: externalAttendees.trim(),
+      agenda: agenda.trim(),
+      minutesAttachment: minutesAttachment.trim(),
       start,
       end,
     });
 
     setTitle('');
-    setAttendees('');
-    setReference('');
+    setSelectedAttendees([]);
+    setExternalAttendees('');
+    setAttendeeQuery('');
+    setAgenda('');
+    setMinutesAttachment('');
     onClose();
   };
 
   const handleReset = () => {
     setStartTime(toTimeLabel(initialStart));
-    setEndTime(null);
+    setEndTime(toTimeLabel(initialEnd));
     setTitle('');
-    setAttendees('');
-    setReference('');
+    setSelectedAttendees([]);
+    setExternalAttendees('');
+    setAttendeeQuery('');
+    setAgenda('');
+    setMinutesAttachment('');
   };
 
+
   return (
-    <div className="dialog-backdrop" role="presentation" onClick={onClose}>
-      <section
-        className="reservation-dialog-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="reservation-dialog-title"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <button
-          className="reservation-close-button"
-          type="button"
-          aria-label="닫기"
-          onClick={onClose}
-        >
-          x
-        </button>
-        <div className="reservation-dialog-left">
-          <h2 id="reservation-dialog-title" className="reservation-dialog-title">
-            Reservation
-          </h2>
-          <DayPicker
-            className="workday-picker"
-            mode="single"
-            locale={ko}
-            selected={selectedDate}
-            onSelect={(date) => {
-              if (date) {
-                setSelectedDate(date);
-              }
-            }}
-            month={activeMonth}
-            onMonthChange={setActiveMonth}
-            weekStartsOn={1}
-            showOutsideDays={false}
-            hidden={{ dayOfWeek: [0, 6] }}
-            formatters={{
-              formatWeekdayName: (date) => date.toLocaleDateString('ko-KR', { weekday: 'short' }),
-              formatCaption: (month) =>
-                month.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' }),
-            }}
-          />
-          <p className="selected-day-text">{selectedDateText}</p>
-          <p className="selected-time-text">
-            {normalizedRange
-              ? `${normalizedRange.startLabel} ~ ${normalizedRange.endLabel} (${formatDuration(normalizedRange.startLabel, normalizedRange.endLabel)})`
-              : '시작 시간과 종료 시간을 선택하세요'}
-          </p>
-          <div className="time-slot-list">
-            {timeSlots.map((slot) => (
-              <button
-                key={slot}
-                className={`time-slot-button ${getSlotClassName(slot)}`}
-                type="button"
-                onClick={() => handleTimeSlotClick(slot)}
-              >
-                {slot}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="reservation-dialog-right">
-          <label className="reservation-label" htmlFor="meeting-title">
-            회의주제
-          </label>
-          <input
-            id="meeting-title"
-            className="reservation-input"
-            type="text"
-            placeholder="회의 주제를 입력하세요"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-          />
-
-          <label className="reservation-label" htmlFor="meeting-attendees">
-            참석자
-          </label>
-          <input
-            id="meeting-attendees"
-            className="reservation-input"
-            type="text"
-            placeholder="예: 홍길동, 김개발"
-            value={attendees}
-            onChange={(event) => setAttendees(event.target.value)}
-          />
-
-          <label className="reservation-label" htmlFor="meeting-reference">
-            참고자료
-          </label>
-          <textarea
-            id="meeting-reference"
-            className="reservation-textarea"
-            placeholder="링크 또는 메모를 입력하세요"
-            value={reference}
-            onChange={(event) => setReference(event.target.value)}
-          />
-
-          <div className="reservation-actions">
-            <button className="secondary-button" type="button" onClick={handleReset}>
-              초기화
-            </button>
+    <Dialog
+      isOpen={isOpen}
+      onClose={onClose}
+      titleId="reservation-dialog-title"
+      contentClassName="reservation-dialog-card"
+      showCloseButton
+      closeButtonClassName="reservation-close-button"
+    >
+      <div className="reservation-dialog-left">
+        <h2 id="reservation-dialog-title" className="reservation-dialog-title">
+          Reservation
+        </h2>
+        <DayPicker
+          className="workday-picker"
+          mode="single"
+          locale={ko}
+          selected={selectedDate}
+          onSelect={(date) => {
+            if (date) {
+              setSelectedDate(date);
+            }
+          }}
+          month={activeMonth}
+          onMonthChange={setActiveMonth}
+          weekStartsOn={1}
+          showOutsideDays={false}
+          hidden={{ dayOfWeek: [0, 6] }}
+          formatters={{
+            formatWeekdayName: (date) => date.toLocaleDateString('ko-KR', { weekday: 'short' }),
+            formatCaption: (month) =>
+              month.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' }),
+          }}
+        />
+        <p className="selected-day-text">{selectedDateText}</p>
+        <p className="selected-time-text">
+          {normalizedRange
+            ? `${normalizedRange.startLabel} ~ ${normalizedRange.endLabel} (${formatDuration(normalizedRange.startLabel, normalizedRange.endLabel)})`
+            : '시작 시간과 종료 시간을 선택하세요'}
+        </p>
+        <div className="time-slot-list">
+          {timeSlots.map((slot) => (
             <button
-              className="primary-button"
+              key={slot}
+              className={`time-slot-button ${getSlotClassName(slot)}`}
               type="button"
-              onClick={handleConfirm}
-              disabled={!normalizedRange || !title.trim()}
+              onClick={() => handleTimeSlotClick(slot)}
             >
-              예약
+              {slot}
             </button>
-          </div>
+          ))}
         </div>
-      </section>
-    </div>
+      </div>
+
+      <div className="reservation-dialog-right">
+        <label className="reservation-label" htmlFor="reservation-owner">
+          예약자
+        </label>
+        <input
+          id="reservation-owner"
+          className="reservation-input"
+          type="text"
+          value={currentUser?.name ?? ''}
+          readOnly
+          disabled
+          style={{ backgroundColor: '#f3f4f6', cursor: 'not-allowed' }}
+        />
+
+        <label className="reservation-label" htmlFor="meeting-title">
+          회의주제
+        </label>
+        <input
+          id="meeting-title"
+          className="reservation-input"
+          type="text"
+          placeholder="회의 주제를 입력하세요"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+
+        <label className="reservation-label" htmlFor="meeting-attendees">
+          참석자
+        </label>
+        <input
+          id="meeting-attendees"
+          className="reservation-input"
+          type="text"
+          placeholder="이름으로 검색하세요"
+          value={attendeeQuery}
+          onChange={(event) => setAttendeeQuery(event.target.value)}
+        />
+        <div className="reservation-attendee-chip-list">
+          {selectedAttendees.map((attendee) => (
+            <button
+              key={attendee.id}
+              className="reservation-attendee-chip"
+              type="button"
+              onClick={() => handleRemoveAttendee(attendee.id)}
+            >
+              {attendee.name}
+            </button>
+          ))}
+        </div>
+        <div className="reservation-attendee-suggestions">
+          {filteredUsers.slice(0, 6).map((user) => (
+            <button
+              key={user.id}
+              className="reservation-attendee-option"
+              type="button"
+              onClick={() => handleAddAttendee(user)}
+            >
+              <span>{user.name}</span>
+              <span>{user.email}</span>
+            </button>
+          ))}
+        </div>
+
+        <label className="reservation-label" htmlFor="meeting-reference">
+          회의 안건
+        </label>
+        <textarea
+          id="meeting-reference"
+          className="reservation-textarea reservation-agenda-textarea"
+          placeholder="회의 안건을 입력하세요"
+          value={agenda}
+          onChange={(event) => setAgenda(event.target.value)}
+        />
+
+        <label className="reservation-label" htmlFor="meeting-minutes">
+          첨부파일
+        </label>
+        <input
+          id="meeting-minutes"
+          className="reservation-input"
+          type="text"
+          placeholder="파일명 또는 링크"
+          value={minutesAttachment}
+          onChange={(event) => setMinutesAttachment(event.target.value)}
+        />
+        <input
+          className="reservation-file-input"
+          type="file"
+          onChange={(event) => {
+            const selectedFile = event.target.files?.[0];
+            if (selectedFile) {
+              setMinutesAttachment(selectedFile.name);
+            }
+          }}
+        />
+
+        <div className="reservation-actions">
+          <button className="secondary-button" type="button" onClick={handleReset}>
+            초기화
+          </button>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={handleConfirm}
+            disabled={!normalizedRange || !title.trim()}
+          >
+            예약
+          </button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 

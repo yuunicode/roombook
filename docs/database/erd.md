@@ -1,6 +1,6 @@
 # ERD (Entity Relationship Diagram)
 
-- Revision Date: 2026-02-20
+- Revision Date: 2026-04-06
 - Version: v1
 
 ## 다이어그램
@@ -16,6 +16,7 @@ erDiagram
         string id PK
         string name
         string email UK
+        string department
         string password_hash
         datetime updated_at
     }
@@ -50,9 +51,9 @@ erDiagram
 ## 엔티티 설명
 
 ### `users`
-- 로그인/인증 주체
-- 예약 생성자(`reservations.user_id`) 및 참석자(`reservation_attendees.user_id`)로 참조됨
-- `email`은 unique, 비밀번호는 `password_hash`로 저장
+- 로그인과 권한 판별의 기준 테이블
+- 예약 생성자(`reservations.user_id`) 및 참석자(`reservation_attendees.user_id`)로 참조된다
+- `email`은 unique이고 `department`는 필수값이다
 
 ### `timetables`
 - 회의실 시간 슬롯 단위 테이블
@@ -60,9 +61,9 @@ erDiagram
 - `end_at > start_at` 체크 제약 포함
 
 ### `reservations`
-- 실제 예약 정보
-- `timetable_id` unique로 슬롯당 예약 1건 보장
-- 회의 목적(`purpose`), 안건 링크(`agenda_url`) 저장 가능
+- 실제 예약 메타데이터를 저장한다
+- `timetable_id` unique 제약으로 한 슬롯에는 예약 1건만 연결된다
+- `purpose`, `agenda_url`, `description`은 선택 입력이다
 
 ### `reservation_attendees`
 - 예약-사용자 N:M 조인 테이블
@@ -80,4 +81,5 @@ erDiagram
 ## 비고
 
 - `room_id`는 현재 DB FK가 아니라 도메인 값으로 사용한다.
-- 화면용 `room_name`(예: 대회의실, 테이블)은 매핑으로 반환한다.
+- 화면용 `room_name`은 API 계층에서 매핑해 반환한다.
+- 관리자 계정은 마이그레이션 seed가 아니라 서버 시작 시 보정된다.
