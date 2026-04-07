@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAppState } from '../stores';
 
 function MinutesPage() {
-  const { isLoggedIn, users } = useAppState();
+  const { isLoggedIn } = useAppState();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
 
@@ -18,7 +18,7 @@ function MinutesPage() {
 
   if (!isLoggedIn) {
     return (
-      <div className="empty-page-state">
+      <div style={{ textAlign: 'center', padding: '100px 20px' }}>
         <h2 className="page-title">로그인이 필요합니다</h2>
         <p className="page-subtitle">회의록 작성을 위해 먼저 로그인해 주세요.</p>
       </div>
@@ -33,8 +33,8 @@ function MinutesPage() {
       </header>
 
       <div className="minutes-form-container">
-        <div className="linear-form-group">
-          <label className="linear-label">회의 제목</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-soft)' }}>회의 제목</label>
           <input 
             className="linear-input" 
             placeholder="예: 2026 Q2 제품 로드맵 기획 회의"
@@ -43,13 +43,8 @@ function MinutesPage() {
           />
         </div>
 
-        <div className="linear-form-group">
-          <label className="linear-label">참석자</label>
-          <div className="attendee-select-placeholder">참석자 선택하기 (준비 중)</div>
-        </div>
-
-        <div className="linear-form-group">
-          <label className="linear-label">내용</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-soft)' }}>내용</label>
           <textarea 
             className="minutes-textarea" 
             placeholder="주요 결정 사항 및 액션 아이템을 기록하세요..."
@@ -58,8 +53,8 @@ function MinutesPage() {
           />
         </div>
 
-        <div className="form-actions">
-          <button className="linear-primary-button save-button" onClick={handleSave}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+          <button className="linear-primary-button" style={{ width: 'auto', padding: '0 32px' }} onClick={handleSave}>
             저장하기
           </button>
         </div>

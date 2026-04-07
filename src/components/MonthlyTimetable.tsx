@@ -25,14 +25,6 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
-type MonthlyTimetableProps = {
-  reservations: TimetableReservation[];
-  currentDate: Date;
-  onNavigate: (nextDate: Date) => void;
-  onSelectSlot: (start: Date, end: Date) => void;
-  onSelectReservation?: (reservation: TimetableReservation) => void;
-};
-
 function MonthlyEventItem({ event }: EventProps<TimetableReservation>) {
   const startTime = event.start ? format(event.start, 'HH:mm') : '';
   const ownerName = getReservationOwnerName(event.creatorEmail ?? '');
@@ -45,7 +37,7 @@ function MonthlyTimetable({
   onNavigate,
   onSelectSlot,
   onSelectReservation,
-}: MonthlyTimetableProps) {
+}: any) {
   return (
     <div className="rbc-wrapper" aria-label="월간 타임테이블">
       <Calendar
@@ -72,7 +64,11 @@ function MonthlyTimetable({
           next: '›',
           noEventsInRange: '예약이 없습니다.',
         }}
-        onSelectSlot={(slotInfo: SlotInfo) => onSelectSlot(slotInfo.start, slotInfo.end)}
+        onSelectSlot={(slotInfo: SlotInfo) => {
+          const day = slotInfo.start.getDay();
+          if (day === 0 || day === 6) return;
+          onSelectSlot(slotInfo.start, slotInfo.end);
+        }}
         onSelectEvent={(event) => onSelectReservation?.(event as TimetableReservation)}
       />
     </div>
