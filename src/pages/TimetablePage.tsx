@@ -37,7 +37,7 @@ function TimetablePage() {
     updateReservation,
     deleteReservation,
   } = useAppState();
-  
+
   const [calendarMode, setCalendarMode] = useState<'weekly' | 'monthly'>('weekly');
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [selectedRoom, setSelectedRoom] = useState<string>('room-a');
@@ -52,7 +52,7 @@ function TimetablePage() {
   const [selectedReservationId, setSelectedReservationId] = useState<string | null>(null);
 
   const displayName = isLoggedIn ? userEmail.split('@')[0] : '';
-  
+
   const roomOptions = [
     { id: 'room-a', name: '회의실', capacity: '30명', icon: 'room' as const },
     { id: 'room-b', name: '회의테이블', capacity: '6명', icon: 'room' as const },
@@ -60,7 +60,7 @@ function TimetablePage() {
 
   const currentRoomId = roomOptions.some((room) => room.id === selectedRoom)
     ? selectedRoom
-    : roomOptions[0]?.id ?? 'room-a';
+    : (roomOptions[0]?.id ?? 'room-a');
 
   const visibleReservations = reservations.filter((item) => item.room === currentRoomId);
 
@@ -127,8 +127,7 @@ function TimetablePage() {
   const handleConfirmReservation = (draft: ReservationDraft) => {
     const overlappingReservations = reservations.filter(
       (item) =>
-        item.room === currentRoomId &&
-        rangesOverlap(item.start, item.end, draft.start, draft.end)
+        item.room === currentRoomId && rangesOverlap(item.start, item.end, draft.start, draft.end)
     );
 
     if (overlappingReservations.length > 0) {
@@ -154,14 +153,12 @@ function TimetablePage() {
 
   const handleMovePrev = () => {
     setCalendarDate((prev) =>
-      calendarMode === 'weekly' ? addWeeks(prev, -1) : addMonths(prev, -1),
+      calendarMode === 'weekly' ? addWeeks(prev, -1) : addMonths(prev, -1)
     );
   };
 
   const handleMoveNext = () => {
-    setCalendarDate((prev) =>
-      calendarMode === 'weekly' ? addWeeks(prev, 1) : addMonths(prev, 1),
-    );
+    setCalendarDate((prev) => (calendarMode === 'weekly' ? addWeeks(prev, 1) : addMonths(prev, 1)));
   };
 
   const handleMoveToday = () => {
@@ -219,8 +216,8 @@ function TimetablePage() {
               ) : (
                 <div className="upcoming-list">
                   {upcomingEvents.map((event) => (
-                    <button 
-                      key={event.id} 
+                    <button
+                      key={event.id}
                       className="upcoming-item"
                       type="button"
                       onClick={() => handleOpenReservationStatus(event)}
@@ -249,33 +246,37 @@ function TimetablePage() {
             <section className="timetable-card timetable-main-card" aria-label="타임테이블">
               <div className="timetable-main-header">
                 <div className="calendar-control-row">
-                  <div className="page-view-toggle" role="tablist" aria-label="타임테이블 보기 전환">
+                  <div
+                    className="page-view-toggle"
+                    role="tablist"
+                    aria-label="타임테이블 보기 전환"
+                  >
                     <button
-                      className={`page-view-button page-mode-button ${calendarMode === 'weekly' ? 'active' : ''}`}
+                      className={`page-mode-button ${calendarMode === 'weekly' ? 'active' : ''}`}
                       type="button"
                       onClick={() => setCalendarMode('weekly')}
                     >
-                      weekly
+                      Weekly
                     </button>
                     <button
-                      className={`page-view-button page-mode-button ${calendarMode === 'monthly' ? 'active' : ''}`}
+                      className={`page-mode-button ${calendarMode === 'monthly' ? 'active' : ''}`}
                       type="button"
                       onClick={() => setCalendarMode('monthly')}
                     >
-                      monthly
+                      Monthly
                     </button>
                   </div>
-                  <div className="page-view-toggle page-nav-only" aria-label="타임테이블 이동 컨트롤">
-                    <button className="page-view-button page-nav-button" type="button" onClick={handleMoveToday}>
+                  <div className="page-nav-only" aria-label="타임테이블 이동 컨트롤">
+                    <button className="page-nav-button" type="button" onClick={handleMoveToday}>
                       오늘
                     </button>
-                    <button className="page-view-button page-nav-button" type="button" onClick={handleMovePrev}>
+                    <button className="page-nav-button" type="button" onClick={handleMovePrev}>
                       ‹
                     </button>
-                    <button className="page-view-button page-nav-button" type="button" onClick={handleMoveNext}>
+                    <button className="page-nav-button" type="button" onClick={handleMoveNext}>
                       ›
                     </button>
-                  </div>
+                  </div>{' '}
                 </div>
               </div>
 
