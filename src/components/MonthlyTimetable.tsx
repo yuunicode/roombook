@@ -1,9 +1,9 @@
+import React from 'react';
 import {
   Calendar,
   Views,
   dateFnsLocalizer,
   type EventProps,
-  type SlotInfo,
 } from 'react-big-calendar';
 import { format, getDay, parse, startOfWeek } from 'date-fns';
 import { ko } from 'date-fns/locale';
@@ -31,6 +31,24 @@ function MonthlyEventItem({ event }: EventProps<TimetableReservation>) {
   return <span>{`${startTime} ${ownerName} · ${event.title}`.trim()}</span>;
 }
 
+/**
+ * 월간 뷰 날짜 셀 클릭 시 정확한 날짜를 전달하기 위한 래퍼
+ * CSS로 주말을 숨겼을 때 발생하는 좌표 오차를 무시하고 실제 데이터 날짜를 사용합니다.
+ */
+const DateCellWrapper = ({ children, value, onSelect }: any) => {
+  const day = value.getDay();
+  const isWeekend = day === 0 || day === 6;
+  
+  if (isWeekend) {
+    return <div className="rbc-day-bg weekend-hidden" style={{ display: 'none' }} />;
+  }
+
+  return React.cloneElement(children, {
+    onClick: () => onSelect(value),
+    style: { ...children.props.style, cursor: 'pointer' }
+  });
+};
+
 function MonthlyTimetable({
   reservations,
   currentDate,
@@ -38,6 +56,15 @@ function MonthlyTimetable({
   onSelectSlot,
   onSelectReservation,
 }: any) {
+  // onSelectSlot을 수동으로 호출하기 위한 핸들러
+  const handleDayClick = (date: Date) => {
+    const start = new Date(date);
+    start.setHours(9, 0, 0, 0);
+    const end = new Date(date);
+    end.setHours(10, 0, 0, 0);
+    onSelectSlot(start, end);
+  };
+
   return (
     <div className="rbc-wrapper" aria-label="월간 타임테이블">
       <Calendar
@@ -51,10 +78,13 @@ function MonthlyTimetable({
         defaultView={Views.MONTH}
         views={[Views.MONTH]}
         toolbar={false}
-        selectable
+        selectable={false} // 래퍼에서 직접 처리하므로 기본 선택 기능 비활성화
         style={{ height: 750 }}
         components={{
           event: MonthlyEventItem,
+          dateCellWrapper: (props: any) => (
+            <DateCellWrapper {...props} onSelect={handleDayClick} />
+          ),
         }}
         eventPropGetter={(event) => getReservationEventStyle(event as TimetableReservation)}
         messages={{
@@ -63,11 +93,6 @@ function MonthlyTimetable({
           previous: '‹',
           next: '›',
           noEventsInRange: '예약이 없습니다.',
-        }}
-        onSelectSlot={(slotInfo: SlotInfo) => {
-          const day = slotInfo.start.getDay();
-          if (day === 0 || day === 6) return;
-          onSelectSlot(slotInfo.start, slotInfo.end);
         }}
         onSelectEvent={(event) => onSelectReservation?.(event as TimetableReservation)}
       />
