@@ -99,7 +99,7 @@ function ReservationStatusDialog({
               )}
             </div>
             <div className="status-info-group">
-              <label className="status-info-label">안건</label>
+              <label className="status-info-label">회의 안건</label>
               <textarea className="minutes-textarea" style={{ minHeight: '140px', padding: '12px', fontSize: '14px' }} value={agenda} onChange={(e) => setAgenda(e.target.value)} />
             </div>
           </>
