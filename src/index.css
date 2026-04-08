@@ -60,9 +60,9 @@ button { cursor: pointer; border: none; background: transparent; }
 .sidebar-card-title { font-size: 11px; font-weight: 700; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.05em; }
 .sidebar-card-icon, .room-button-icon { width: 14px !important; height: 14px !important; color: var(--text-soft); }
 
-.sidebar-add-button { 
-  width: 100%; background: #ffffff; border: 1px solid var(--border); border-radius: 12px; 
-  padding: 14px 18px; text-align: left; transition: all 0.2s; 
+.sidebar-add-button {
+  width: 100%; background: #ffffff; border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px 18px; text-align: left; transition: all 0.2s;
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
 }
@@ -110,28 +110,251 @@ button { cursor: pointer; border: none; background: transparent; }
 /* ==========================================================
    MODAL & CARD FORMATTING (STABLE & SPACIOUS)
    ========================================================== */
-.dialog-backdrop { 
-  position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important; 
-  background: rgba(15, 18, 28, 0.4) !important; 
-  display: flex !important; align-items: center !important; justify-content: center !important; 
+.dialog-backdrop {
+  position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+  background: rgba(15, 18, 28, 0.4) !important;
+  display: flex !important; align-items: center !important; justify-content: center !important;
   z-index: 9999 !important; backdrop-filter: blur(4px);
   padding: 24px !important; /* 화면 가장자리 공간 확보 */
 }
 
-.reservation-status-dialog-card, .reservation-dialog-card { 
-  position: relative !important; 
-  max-width: 480px !important; width: 100% !important; 
+.reservation-status-dialog-card {
+  position: relative !important;
+  max-width: 480px !important; width: 100% !important;
   max-height: calc(100vh - 48px) !important;
-  padding: 0 !important; overflow-y: auto; 
-  border: 1px solid var(--border) !important; border-radius: 16px !important; 
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.15) !important; background: #ffffff !important; 
+  padding: 0 !important; overflow-y: auto;
+  border: 1px solid var(--border) !important; border-radius: 16px !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.15) !important; background: #ffffff !important;
+}
+
+.reservation-dialog-card {
+  position: relative !important;
+  max-width: 860px !important; width: 100% !important;
+  max-height: calc(100vh - 48px) !important;
+  padding: 0 !important; overflow: hidden;
+  border: 1px solid var(--border) !important; border-radius: 20px !important;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.2) !important; background: #ffffff !important;
+}
+
+.reservation-dialog-grid {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  height: 100%;
+}
+
+.reservation-sidebar-picker {
+  background: #fafafb;
+  border-right: 1px solid var(--border);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+}
+
+.reservation-main-fields {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.time-slots-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.time-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.time-slot-button {
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.time-slot-button:hover:not(.disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(94, 106, 210, 0.04);
+}
+
+.time-slot-button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+  font-weight: 600;
+  z-index: 2;
+}
+
+.time-slot-button.start-edge {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.time-slot-button.end-edge {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.time-slot-button.in-range {
+  background: rgba(94, 106, 210, 0.08);
+  border-color: transparent;
+  color: var(--accent);
+  border-radius: 0;
+}
+
+.time-slot-button.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  background: #f1f3f5;
+  border-color: transparent;
+  color: var(--text-soft);
+}
+
+.reservation-day-picker.rdp-root {
+  --rdp-day-height: 38px !important;
+  --rdp-day-width: auto !important;
+  --rdp-day_button-height: 34px !important;
+  --rdp-day_button-width: 100% !important;
+  --rdp-day_button-border-radius: 10px !important;
+  --rdp-accent-color: var(--accent) !important;
+  --rdp-accent-background-color: rgba(94, 106, 210, 0.1) !important;
+  margin: 0 !important;
+  width: 100%;
+}
+
+.reservation-day-picker .rdp-months,
+.reservation-day-picker .rdp-month {
+  width: 100%;
+  max-width: none;
+}
+
+.reservation-day-picker .rdp-month_grid {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.reservation-day-picker .rdp-weekday,
+.reservation-day-picker .rdp-day {
+  width: auto !important;
+}
+
+.reservation-day-picker .rdp-day_button {
+  width: 100% !important;
+}
+
+.reservation-day-picker .rdp-selected .rdp-day_button,
+.reservation-day-picker .rdp-selected .rdp-day_button:focus-visible,
+.reservation-day-picker .rdp-selected .rdp-day_button:hover {
+  background-color: var(--accent) !important;
+  color: white !important;
+}
+
+.reservation-day-picker .rdp-day:not(.rdp-selected) .rdp-day_button:hover:not([disabled]) {
+  background-color: rgba(94, 106, 210, 0.08) !important;
+  color: var(--accent) !important;
+}
+
+.reservation-day-picker .rdp-weekday {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: var(--text-soft) !important;
+  text-transform: uppercase !important;
+  text-align: center !important;
+}
+
+.reservation-day-picker .rdp-day_button {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  border-radius: 10px !important;
+}
+
+/* 주말 컬럼 제거 (월요일 시작 기준: 6=토, 7=일) */
+.reservation-day-picker .rdp-weekdays th:nth-child(6),
+.reservation-day-picker .rdp-weekdays th:nth-child(7),
+.reservation-day-picker .rdp-week td:nth-child(6),
+.reservation-day-picker .rdp-week td:nth-child(7) {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .reservation-dialog-card {
+    max-width: 540px !important;
+    max-height: calc(100vh - 32px) !important;
+    overflow-y: auto !important;
+    border-radius: 16px !important;
+  }
+  .reservation-dialog-grid {
+    grid-template-columns: 1fr;
+    height: auto !important;
+  }
+  .reservation-sidebar-picker {
+    padding: 56px 24px 24px; /* X 버튼 피하기 위해 상단 패딩 증가 */
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    overflow-y: visible !important;
+  }
+  .reservation-main-fields {
+    height: auto !important;
+    overflow-y: visible !important;
+  }
+  .status-card-header { padding: 24px 24px 16px; }
+  .status-card-body { padding: 0 24px 24px; gap: 20px; }
+  .status-card-footer { padding: 20px 24px; }
+
+  .time-slots-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+
+  .dialog-close-button {
+    top: 16px !important;
+    right: 16px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .dialog-backdrop {
+    padding: 16px !important;
+  }
+
+  .reservation-sidebar-picker {
+    padding: 56px 16px 20px;
+  }
+
+  .reservation-day-picker.rdp-root {
+    --rdp-day-height: 32px !important;
+    --rdp-day-width: auto !important;
+    --rdp-day_button-height: 30px !important;
+    --rdp-day_button-width: 100% !important;
+  }
+
+  .reservation-day-picker .rdp-weekday {
+    padding: 4px 0 !important;
+  }
+
+  .time-slots-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 .dialog-close-button {
-  position: absolute !important; top: 20px !important; right: 20px !important; 
-  width: 32px !important; height: 32px !important; 
-  display: flex !important; align-items: center !important; justify-content: center !important; 
-  border-radius: 8px !important; color: var(--text-soft) !important; font-size: 18px !important; 
+  position: absolute !important; top: 20px !important; right: 20px !important;
+  width: 32px !important; height: 32px !important;
+  display: flex !important; align-items: center !important; justify-content: center !important;
+  border-radius: 8px !important; color: var(--text-soft) !important; font-size: 18px !important;
   background: transparent !important; z-index: 100 !important; border: none !important;
 }
 .dialog-close-button:hover { background: rgba(16, 18, 24, 0.05) !important; color: var(--text) !important; }
@@ -139,11 +362,11 @@ button { cursor: pointer; border: none; background: transparent; }
 .status-card-header { padding: 32px 32px 24px; }
 .status-card-body { padding: 0 32px 32px; display: flex; flex-direction: column; gap: 28px; }
 
-.status-info-group { 
-  display: flex !important; 
+.status-info-group {
+  display: flex !important;
   flex-direction: column !important; /* 수직 정렬로 줄바꿈 효과 */
-  align-items: flex-start !important;
-  gap: 8px !important; 
+  align-items: stretch !important;
+  gap: 8px !important;
 }
 
 .status-info-label { font-size: 11px; font-weight: 700; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.06em; margin: 0; }
