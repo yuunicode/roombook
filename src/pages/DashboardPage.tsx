@@ -8,7 +8,7 @@ function DashboardPage() {
   const displayName = isLoggedIn ? userEmail.split('@')[0] : '';
 
   const myUpcomingMeetings = reservations
-    .filter(r => r.attendees.some(a => a.email.toLowerCase() === userEmail.toLowerCase()))
+    .filter((r) => r.attendees.some((a) => a.email.toLowerCase() === userEmail.toLowerCase()))
     .sort((a, b) => a.start.getTime() - b.start.getTime())
     .slice(0, 3);
 
@@ -30,29 +30,60 @@ function DashboardPage() {
           </div>
         </section>
 
-        <section className="dashboard-card" onClick={() => navigate('/minutes')}>
+        <section className="dashboard-card" onClick={() => navigate('/minutes-wiki')}>
           <div className="card-icon-box">
             <AppIcon name="room" className="card-main-icon" />
           </div>
           <div className="card-info">
-            <h2 className="card-title">회의록 작성</h2>
-            <p className="card-desc">중요한 논의 사항과 결정을 놓치지 않도록 기록하세요.</p>
+            <h2 className="card-title">회의록 Wiki</h2>
+            <p className="card-desc">회의록을 통합 조회하고 원하는 문서를 바로 확인하세요.</p>
           </div>
         </section>
       </div>
 
       <section style={{ marginTop: '48px' }}>
-        <h3 style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-soft)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px', paddingLeft: '4px' }}>내 다가오는 일정</h3>
+        <h3
+          style={{
+            fontSize: '11px',
+            fontWeight: 700,
+            color: 'var(--text-soft)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            marginBottom: '16px',
+            paddingLeft: '4px',
+          }}
+        >
+          내 다가오는 일정
+        </h3>
         <div className="dashboard-mini-list">
           {myUpcomingMeetings.length > 0 ? (
-            myUpcomingMeetings.map(meeting => (
+            myUpcomingMeetings.map((meeting) => (
               <div key={meeting.id} className="mini-item">
-                <div className="mini-time" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-muted)', width: '60px' }}>
-                  {meeting.start.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                <div
+                  className="mini-time"
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: 'var(--text-muted)',
+                    width: '60px',
+                  }}
+                >
+                  {meeting.start.toLocaleTimeString('ko-KR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                  })}
                 </div>
                 <div className="mini-content">
-                  <p className="mini-title" style={{ fontSize: '14px', fontWeight: 600, marginBottom: '2px' }}>{meeting.title}</p>
-                  <p className="mini-meta" style={{ fontSize: '12px', color: 'var(--text-soft)' }}>{meeting.room} · {meeting.attendees.length}명 참석</p>
+                  <p
+                    className="mini-title"
+                    style={{ fontSize: '14px', fontWeight: 600, marginBottom: '2px' }}
+                  >
+                    {meeting.title}
+                  </p>
+                  <p className="mini-meta" style={{ fontSize: '12px', color: 'var(--text-soft)' }}>
+                    {meeting.room} · {meeting.attendees.length}명 참석
+                  </p>
                 </div>
               </div>
             ))

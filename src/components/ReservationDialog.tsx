@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { format, parse, startOfDay } from 'date-fns';
 import { DayPicker } from 'react-day-picker';
 import { ko } from 'date-fns/locale';
@@ -37,6 +37,15 @@ const TIME_SLOTS = (() => {
   }
   return slots;
 })();
+
+const MAX_BULLET_LEVEL = 4;
+const BULLET_SYMBOLS = ['•', '◦', '▪', '▫'] as const;
+const BULLET_PATTERN = /^(\t{0,3})([•◦▪▫])\s?(.*)$/;
+
+function getBulletPrefix(level: number) {
+  const normalized = Math.max(0, Math.min(level, BULLET_SYMBOLS.length - 1));
+  return `${BULLET_SYMBOLS[normalized]} `;
+}
 
 function ReservationDialog({
   isOpen,
@@ -82,7 +91,11 @@ function ReservationDialog({
   const filteredUsers = useMemo(() => {
     const keyword = attendeeQuery.trim().toLowerCase();
     if (!keyword) return [];
-    return users.filter(u => !selectedAttendees.some(a => a.id === u.id) && (u.name.toLowerCase().includes(keyword) || u.email.toLowerCase().includes(keyword)));
+    return users.filter(
+      (u) =>
+        !selectedAttendees.some((a) => a.id === u.id) &&
+        (u.name.toLowerCase().includes(keyword) || u.email.toLowerCase().includes(keyword))
+    );
   }, [attendeeQuery, selectedAttendees, users]);
 
   const handleConfirm = () => {
@@ -131,8 +144,96 @@ function ReservationDialog({
     }
   };
 
+  const handleAgendaKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const textarea = event.currentTarget;
+    const value = textarea.value;
+    const selectionStart = textarea.selectionStart;
+    const selectionEnd = textarea.selectionEnd;
+
+    const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+    const nextLineBreakIndex = value.indexOf('\n', selectionStart);
+    const lineEnd = nextLineBreakIndex === -1 ? value.length : nextLineBreakIndex;
+    const line = value.slice(lineStart, lineEnd);
+    const lineBeforeCursor = value.slice(lineStart, selectionStart);
+
+    const setAgendaWithCursor = (nextValue: string, cursor: number) => {
+      setAgenda(nextValue);
+      requestAnimationFrame(() => {
+        textarea.focus();
+        textarea.setSelectionRange(cursor, cursor);
+      });
+    };
+
+    if (event.key === '-') {
+      if (selectionStart !== selectionEnd) return;
+      if (!/^\t*$/.test(lineBeforeCursor)) return;
+      event.preventDefault();
+      const bullet = getBulletPrefix(Math.min(lineBeforeCursor.length, MAX_BULLET_LEVEL - 1));
+      const nextValue = `${value.slice(0, selectionStart)}${bullet}${value.slice(selectionEnd)}`;
+      setAgendaWithCursor(nextValue, selectionStart + bullet.length);
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      const bulletMatch = line.match(BULLET_PATTERN);
+      if (!bulletMatch) return;
+      event.preventDefault();
+      const indent = bulletMatch[1] ?? '';
+      const insert = `\n${indent}${getBulletPrefix(indent.length)}`;
+      const nextValue = `${value.slice(0, selectionStart)}${insert}${value.slice(selectionEnd)}`;
+      setAgendaWithCursor(nextValue, selectionStart + insert.length);
+      return;
+    }
+
+    if (event.key !== 'Tab') return;
+    event.preventDefault();
+
+    if (event.shiftKey) {
+      const indentMatch = line.match(/^(\t{1,3})([•◦▪▫])\s?(.*)$/);
+      if (indentMatch) {
+        const nextIndent = indentMatch[1].slice(0, -1);
+        const nextLine = `${nextIndent}${getBulletPrefix(nextIndent.length)}${indentMatch[3]}`;
+        const nextValue = `${value.slice(0, lineStart)}${nextLine}${value.slice(lineEnd)}`;
+        setAgendaWithCursor(nextValue, Math.max(lineStart, selectionStart - 1));
+        return;
+      }
+
+      const bulletMatch = line.match(/^([•◦▪▫])\s?(.*)$/);
+      if (bulletMatch) {
+        const nextLine = bulletMatch[2];
+        const nextValue = `${value.slice(0, lineStart)}${nextLine}${value.slice(lineEnd)}`;
+        setAgendaWithCursor(nextValue, Math.max(lineStart, selectionStart - 2));
+      }
+      return;
+    }
+
+    const nestedMatch = line.match(BULLET_PATTERN);
+    if (nestedMatch) {
+      const nextIndent = `${nestedMatch[1]}\t`;
+      if (nextIndent.length >= MAX_BULLET_LEVEL) return;
+      const nextLine = `${nextIndent}${getBulletPrefix(nextIndent.length)}${nestedMatch[3]}`;
+      const nextValue = `${value.slice(0, lineStart)}${nextLine}${value.slice(lineEnd)}`;
+      setAgendaWithCursor(nextValue, selectionStart + 1);
+      return;
+    }
+
+    const plainLineMatch = line.match(/^(\t{0,4})(.*)$/);
+    if (plainLineMatch) {
+      const indent = plainLineMatch[1].slice(0, MAX_BULLET_LEVEL - 1);
+      const bullet = getBulletPrefix(indent.length);
+      const nextLine = `${indent}${bullet}${plainLineMatch[2]}`;
+      const nextValue = `${value.slice(0, lineStart)}${nextLine}${value.slice(lineEnd)}`;
+      setAgendaWithCursor(nextValue, selectionStart + bullet.length);
+    }
+  }, []);
+
   return (
-    <Dialog isOpen={isOpen} onClose={onClose} contentClassName="reservation-dialog-card" showCloseButton>
+    <Dialog
+      isOpen={isOpen}
+      onClose={onClose}
+      contentClassName="reservation-dialog-card"
+      showCloseButton
+    >
       <div className="reservation-dialog-grid">
         <aside className="reservation-sidebar-picker">
           <div className="status-info-group">
@@ -152,7 +253,7 @@ function ReservationDialog({
           <div className="time-slots-wrapper">
             <label className="status-info-label">시간 선택</label>
             <div className="time-slots-grid">
-              {TIME_SLOTS.map(slot => {
+              {TIME_SLOTS.map((slot) => {
                 const isStart = startTime === slot;
                 const isEnd = endTime === slot;
                 const isInRange = slot > startTime && slot < endTime;
@@ -173,12 +274,21 @@ function ReservationDialog({
 
         <main className="reservation-main-fields">
           <div className="status-card-header">
-            <h2 style={{ fontSize: '24px', fontWeight: 700, margin: 0, letterSpacing: '-0.03em' }}>새 회의 예약</h2>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+            <h2 style={{ fontSize: '22px', fontWeight: 700, margin: 0, letterSpacing: '-0.03em' }}>
+              새 회의 예약
+            </h2>
+            <div style={{ display: 'flex', gap: '6px', marginTop: '10px', flexWrap: 'wrap' }}>
               <span className="status-badge">
-                {selectedDate?.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
+                {selectedDate?.toLocaleDateString('ko-KR', {
+                  month: 'long',
+                  day: 'numeric',
+                  weekday: 'short',
+                })}
               </span>
-              <span className="status-badge" style={{ background: 'rgba(94, 106, 210, 0.06)', color: 'var(--accent)' }}>
+              <span
+                className="status-badge"
+                style={{ background: 'rgba(94, 106, 210, 0.06)', color: 'var(--accent)' }}
+              >
                 {startTime} - {endTime}
               </span>
             </div>
@@ -226,24 +336,38 @@ function ReservationDialog({
                 onChange={(e) => setAttendeeQuery(e.target.value)}
               />
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {selectedAttendees.map(a => (
+                {selectedAttendees.map((a) => (
                   <span
                     key={a.id}
                     className="room-capacity-tag"
                     style={{ cursor: 'pointer' }}
-                    onClick={() => setSelectedAttendees(prev => prev.filter(item => item.id !== a.id))}
+                    onClick={() =>
+                      setSelectedAttendees((prev) => prev.filter((item) => item.id !== a.id))
+                    }
                   >
                     {a.name} ✕
                   </span>
                 ))}
               </div>
               {filteredUsers.length > 0 && (
-                <div className="user-dropdown-popover" style={{ position: 'static', width: '100%', marginTop: '8px', boxShadow: 'none', border: '1px solid var(--border)' }}>
-                  {filteredUsers.slice(0, 4).map(u => (
+                <div
+                  className="user-dropdown-popover"
+                  style={{
+                    position: 'static',
+                    width: '100%',
+                    marginTop: '8px',
+                    boxShadow: 'none',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  {filteredUsers.slice(0, 4).map((u) => (
                     <button
                       key={u.id}
                       className="popover-item"
-                      onClick={() => { setSelectedAttendees(prev => [...prev, u]); setAttendeeQuery(''); }}
+                      onClick={() => {
+                        setSelectedAttendees((prev) => [...prev, u]);
+                        setAttendeeQuery('');
+                      }}
                     >
                       {u.name} ({u.email})
                     </button>
@@ -269,20 +393,29 @@ function ReservationDialog({
                 style={{ minHeight: '120px', padding: '12px', fontSize: '14px', resize: 'none' }}
                 value={agenda}
                 onChange={(e) => setAgenda(e.target.value)}
+                onKeyDown={handleAgendaKeyDown}
                 placeholder="주요 안건을 입력하세요"
               />
             </div>
           </div>
 
-          <div className="status-card-footer">
-            <button className="nav-menu-item" onClick={onClose}>취소</button>
+          <div className="status-card-footer" style={{ flexWrap: 'wrap' }}>
+            <button className="nav-menu-item" style={{ whiteSpace: 'nowrap' }} onClick={onClose}>
+              취소
+            </button>
             <button
               className="linear-primary-button"
-              style={{ width: 'auto', padding: '0 24px', marginTop: 0 }}
+              style={{
+                width: 'auto',
+                minWidth: '96px',
+                padding: '0 24px',
+                marginTop: 0,
+                whiteSpace: 'nowrap',
+              }}
               onClick={handleConfirm}
               disabled={!title.trim() || !selectedDate}
             >
-              예약 완료
+              예약하기
             </button>
           </div>
         </main>

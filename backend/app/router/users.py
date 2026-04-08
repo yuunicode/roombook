@@ -7,8 +7,13 @@ from app.core.settings import SESSION_COOKIE_NAME
 from app.infra.db import get_db_session
 from app.service.auth_service import AuthUser, get_user_from_session_token
 from app.service.domain import DomainError
-from app.service.user_service import create_user_by_admin
-from app.service.user_service import search_users as search_users_service
+from app.service.user_service import (
+    create_user_by_admin,
+    list_all_users,
+)
+from app.service.user_service import (
+    search_users as search_users_service,
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -32,7 +37,7 @@ class CreateUserRequest(BaseModel):
     id: str
     name: str
     email: str
-    department: str
+    department: str = "미지정"
     password: str
 
 
@@ -41,6 +46,32 @@ class UserResponse(BaseModel):
     name: str
     email: str
     department: str
+
+
+class CreateUserResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+
+
+@router.get(
+    "",
+    response_model=list[UserResponse],
+    responses={401: {"model": ErrorResponse}},
+)
+async def get_users(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> list[UserResponse] | JSONResponse:
+    auth_user = await _require_auth_user(request, db)
+    if auth_user is None:
+        return _unauthorized_response()
+
+    result = await list_all_users(auth_user.id, db)
+    if isinstance(result, DomainError):
+        return _error_response(status.HTTP_400_BAD_REQUEST, result.code, result.message)
+
+    return [UserResponse(id=item.id, name=item.name, email=item.email, department=item.department) for item in result]
 
 
 @router.get(
@@ -77,14 +108,14 @@ async def search_users(
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    response_model=UserResponse,
+    response_model=CreateUserResponse,
     responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
 )
 async def create_user(
     payload: CreateUserRequest,
     request: Request,
     db: AsyncSession = Depends(get_db_session),
-) -> UserResponse | JSONResponse:
+) -> CreateUserResponse | JSONResponse:
     auth_user = await _require_auth_user(request, db)
     if auth_user is None:
         return _unauthorized_response()
@@ -101,7 +132,7 @@ async def create_user(
     if isinstance(result, DomainError):
         return _error_response(_domain_error_to_status(result.code), result.code, result.message)
 
-    return UserResponse(id=result.id, name=result.name, email=result.email, department=result.department)
+    return CreateUserResponse(id=result.id, name=result.name, email=result.email)
 
 
 async def _require_auth_user(request: Request, db: AsyncSession) -> AuthUser | None:

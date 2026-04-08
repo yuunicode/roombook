@@ -131,15 +131,15 @@ button { cursor: pointer; border: none; background: transparent; }
   position: relative !important;
   max-width: 860px !important; width: 100% !important;
   max-height: calc(100vh - 48px) !important;
-  padding: 0 !important; overflow: hidden;
-  border: 1px solid var(--border) !important; border-radius: 20px !important;
-  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.2) !important; background: #ffffff !important;
+  padding: 0 !important; overflow-x: hidden; overflow-y: auto;
+  border: none !important; border-radius: 16px !important;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12) !important; background: #ffffff !important;
 }
 
 .reservation-dialog-grid {
   display: grid;
-  grid-template-columns: 340px 1fr;
-  height: 100%;
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  height: auto;
 }
 
 .reservation-sidebar-picker {
@@ -155,8 +155,48 @@ button { cursor: pointer; border: none; background: transparent; }
 .reservation-main-fields {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow-y: auto;
+  min-width: 0;
+  height: auto;
+  overflow-y: visible;
+}
+
+.reservation-main-fields .status-card-header {
+  padding: 32px 24px 16px;
+}
+
+.reservation-main-fields .status-card-body {
+  padding: 0 24px 20px;
+  gap: 16px;
+}
+
+.reservation-main-fields .status-info-label {
+  font-size: 10px;
+}
+
+.reservation-main-fields .linear-input {
+  height: 36px;
+  font-size: 13px;
+  padding: 0 10px;
+}
+
+.reservation-main-fields .room-capacity-tag {
+  font-size: 10px;
+  padding: 2px 7px;
+}
+
+.reservation-main-fields .minutes-textarea {
+  font-size: 13px;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+.reservation-main-fields .status-card-footer {
+  padding: 16px 24px;
+}
+
+.reservation-main-fields .status-card-footer .linear-primary-button {
+  height: 36px;
+  font-size: 13px;
 }
 
 .time-slots-wrapper {
@@ -290,7 +330,7 @@ button { cursor: pointer; border: none; background: transparent; }
   display: none;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 980px) {
   .reservation-dialog-card {
     max-width: 540px !important;
     max-height: calc(100vh - 32px) !important;

@@ -5,9 +5,11 @@ import { useAppState } from '../stores';
 
 function MinutesWikiPage() {
   const navigate = useNavigate();
-  const { isLoggedIn, reservations } = useAppState();
+  const { reservations, reservationLabels } = useAppState();
 
-  const [recentMonthsFilter, setRecentMonthsFilter] = useState<'all' | '1' | '3' | '6' | '12'>('all');
+  const [recentMonthsFilter, setRecentMonthsFilter] = useState<'all' | '1' | '3' | '6' | '12'>(
+    'all'
+  );
   const [monthFilter, setMonthFilter] = useState('');
   const [dayFilter, setDayFilter] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
@@ -15,8 +17,14 @@ function MinutesWikiPage() {
   const [attendeeFilter, setAttendeeFilter] = useState('');
 
   const labelOptions = useMemo(
-    () => Array.from(new Set(reservations.map((reservation) => reservation.label))).filter(Boolean).sort(),
-    [reservations]
+    () =>
+      Array.from(
+        new Set([
+          ...reservationLabels,
+          ...reservations.map((reservation) => reservation.label).filter(Boolean),
+        ])
+      ).sort(),
+    [reservationLabels, reservations]
   );
 
   const filteredReservations = useMemo(() => {
@@ -27,7 +35,8 @@ function MinutesWikiPage() {
         const month = reservation.start.getMonth() + 1;
         const day = reservation.start.getDate();
         const internalAttendees = reservation.attendees.map((attendee) => attendee.name).join(' ');
-        const attendeeKeywordPool = `${internalAttendees} ${reservation.externalAttendees}`.toLowerCase();
+        const attendeeKeywordPool =
+          `${internalAttendees} ${reservation.externalAttendees}`.toLowerCase();
 
         if (recentMonthsFilter !== 'all') {
           const threshold = new Date(now);
@@ -37,8 +46,10 @@ function MinutesWikiPage() {
         if (monthFilter && month !== Number(monthFilter)) return false;
         if (dayFilter && day !== Number(dayFilter)) return false;
         if (labelFilter && reservation.label !== labelFilter) return false;
-        if (creatorFilter && !creatorName.toLowerCase().includes(creatorFilter.toLowerCase())) return false;
-        if (attendeeFilter && !attendeeKeywordPool.includes(attendeeFilter.toLowerCase())) return false;
+        if (creatorFilter && !creatorName.toLowerCase().includes(creatorFilter.toLowerCase()))
+          return false;
+        if (attendeeFilter && !attendeeKeywordPool.includes(attendeeFilter.toLowerCase()))
+          return false;
         return true;
       })
       .sort((a, b) => b.start.getTime() - a.start.getTime());
@@ -52,23 +63,36 @@ function MinutesWikiPage() {
     attendeeFilter,
   ]);
 
-  if (!isLoggedIn) {
-    return (
-      <div className="empty-page-state">
-        <h2 className="page-title">로그인이 필요합니다</h2>
-        <p className="page-subtitle">회의록 Wiki를 보려면 먼저 로그인해 주세요.</p>
-      </div>
-    );
-  }
-
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px 0 40px' }}>
-      <section style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', marginBottom: '16px' }}>
-        <h1 className="page-title" style={{ fontSize: '24px', marginBottom: '14px' }}>회의록 Wiki</h1>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+      <section
+        style={{
+          background: '#ffffff',
+          border: '1px solid var(--border)',
+          borderRadius: '12px',
+          padding: '20px',
+          marginBottom: '16px',
+        }}
+      >
+        <h1 className="page-title" style={{ fontSize: '24px', marginBottom: '14px' }}>
+          회의록 Wiki
+        </h1>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '10px',
+          }}
+        >
           <div className="status-info-group">
             <label className="status-info-label">최근 기간</label>
-            <select className="linear-input" value={recentMonthsFilter} onChange={(event) => setRecentMonthsFilter(event.target.value as 'all' | '1' | '3' | '6' | '12')}>
+            <select
+              className="linear-input"
+              value={recentMonthsFilter}
+              onChange={(event) =>
+                setRecentMonthsFilter(event.target.value as 'all' | '1' | '3' | '6' | '12')
+              }
+            >
               <option value="all">전체</option>
               <option value="1">최근 1개월</option>
               <option value="3">최근 3개월</option>
@@ -78,10 +102,16 @@ function MinutesWikiPage() {
           </div>
           <div className="status-info-group">
             <label className="status-info-label">월</label>
-            <select className="linear-input" value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)}>
+            <select
+              className="linear-input"
+              value={monthFilter}
+              onChange={(event) => setMonthFilter(event.target.value)}
+            >
               <option value="">전체</option>
               {Array.from({ length: 12 }, (_, index) => String(index + 1)).map((month) => (
-                <option key={month} value={month}>{month}월</option>
+                <option key={month} value={month}>
+                  {month}월
+                </option>
               ))}
             </select>
           </div>
@@ -99,23 +129,46 @@ function MinutesWikiPage() {
           </div>
           <div className="status-info-group">
             <label className="status-info-label">라벨</label>
-            <select className="linear-input" value={labelFilter} onChange={(event) => setLabelFilter(event.target.value)}>
+            <select
+              className="linear-input"
+              value={labelFilter}
+              onChange={(event) => setLabelFilter(event.target.value)}
+            >
               <option value="">전체</option>
-              {labelOptions.map((label) => <option key={label} value={label}>{label}</option>)}
+              {labelOptions.map((label) => (
+                <option key={label} value={label}>
+                  {label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="status-info-group">
             <label className="status-info-label">예약자</label>
-            <input className="linear-input" value={creatorFilter} onChange={(event) => setCreatorFilter(event.target.value)} />
+            <input
+              className="linear-input"
+              value={creatorFilter}
+              onChange={(event) => setCreatorFilter(event.target.value)}
+            />
           </div>
           <div className="status-info-group">
             <label className="status-info-label">참석자</label>
-            <input className="linear-input" value={attendeeFilter} onChange={(event) => setAttendeeFilter(event.target.value)} />
+            <input
+              className="linear-input"
+              value={attendeeFilter}
+              onChange={(event) => setAttendeeFilter(event.target.value)}
+            />
           </div>
         </div>
       </section>
 
-      <section style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '12px', overflowX: 'auto' }}>
+      <section
+        style={{
+          background: '#ffffff',
+          border: '1px solid var(--border)',
+          borderRadius: '12px',
+          overflowX: 'auto',
+        }}
+      >
         <div style={{ minWidth: '1100px' }}>
           <div
             style={{
@@ -154,12 +207,29 @@ function MinutesWikiPage() {
                 <span style={{ fontSize: '13px', fontWeight: 700 }}>
                   {format(reservation.start, 'yyyy-MM-dd HH:mm')}
                 </span>
-                <span className="room-capacity-tag" style={{ width: 'fit-content' }}>{reservation.label || '-'}</span>
-                <span style={{ fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reservation.title}</span>
+                <span className="room-capacity-tag" style={{ width: 'fit-content' }}>
+                  {reservation.label || '-'}
+                </span>
+                <span
+                  style={{
+                    fontSize: '13px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {reservation.title}
+                </span>
                 <span style={{ fontSize: '13px' }}>{reservation.room}</span>
                 <span style={{ fontSize: '13px' }}>{creatorName}</span>
                 <span style={{ fontSize: '13px' }}>{internalAttendeeCount}명</span>
-                <button className="nav-menu-item" type="button" onClick={() => navigate(`/minutes/${reservation.id}`)}>열기</button>
+                <button
+                  className="nav-menu-item"
+                  type="button"
+                  onClick={() => navigate(`/minutes/${reservation.id}`)}
+                >
+                  보기
+                </button>
               </div>
             );
           })}

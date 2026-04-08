@@ -1,6 +1,6 @@
 # API 명세서
 
-- Revision Date: 2026-04-06
+- Revision Date: 2026-04-08
 - Version: v1
 
 ## 공통 사항
@@ -31,6 +31,7 @@
 | 403 | `FORBIDDEN` | 관리자 권한 필요 |
 | 404 | `NOT_FOUND` | 리소스 없음 |
 | 409 | `RESERVATION_CONFLICT` | 같은 회의실 동일 시간대 예약 충돌 |
+| 409 | `LOCKED` | 다른 사용자가 회의록 수정 중 |
 
 ### 권한 정책
 
@@ -126,7 +127,24 @@ Response `200 OK`
 ]
 ```
 
-### 2.2 `POST /users`
+### 2.2 `GET /users`
+
+로그인 사용자 기준 전체 사용자 목록.
+
+Response `200 OK`
+
+```json
+[
+  {
+    "id": "1",
+    "name": "관리자",
+    "email": "admin@ecminer.com",
+    "department": "운영팀"
+  }
+]
+```
+
+### 2.3 `POST /users`
 
 관리자 전용 사용자 생성.
 
@@ -244,12 +262,18 @@ Request body
 |------|------|------|------|
 | room_id | string | N | 회의실 ID, 기본값 `A` |
 | title | string | Y | 예약 제목 |
+| label | string | N | 예약 라벨 |
 | purpose | string | N | 회의 목적 |
 | agenda_url | string | N | 첨부 링크 |
 | start_at | datetime | Y | 시작 시각 |
 | end_at | datetime | Y | 종료 시각 |
 | description | string | N | 메모 |
 | attendees | string[] | N | 사용자 ID 또는 이메일 배열 |
+| external_attendees | string | N | 외부 참석자 |
+| agenda | string | N | 주요 안건 |
+| meeting_content | string | N | 회의 내용 |
+| meeting_result | string | N | 회의 결과 |
+| minutes_attachment | string | N | 회의록 첨부 링크/경로 |
 
 Response `201 Created`
 
@@ -259,6 +283,7 @@ Response `201 Created`
   "room_id": "A",
   "room_name": "Room A",
   "title": "주간 회의",
+  "label": "AIDA",
   "purpose": "현황 공유",
   "agenda_url": "https://example.com/doc",
   "start_at": "2026-04-06T10:00:00+09:00",
@@ -277,11 +302,17 @@ Response `200 OK`
   "room_id": "A",
   "room_name": "Room A",
   "title": "주간 회의",
+  "label": "AIDA",
   "purpose": "현황 공유",
   "agenda_url": "https://example.com/doc",
   "start_at": "2026-04-06T10:00:00+09:00",
   "end_at": "2026-04-06T11:00:00+09:00",
   "description": "회의 메모",
+  "external_attendees": "외부 파트너 1",
+  "agenda": "주요 안건 텍스트",
+  "meeting_content": "회의 내용 텍스트",
+  "meeting_result": "회의 결과 텍스트",
+  "minutes_attachment": "https://example.com/minutes",
   "created_by": { "name": "관리자" },
   "attendees": [
     {
@@ -300,12 +331,18 @@ Response `200 OK`
 허용 필드
 
 - `title`
+- `label`
 - `purpose`
 - `agenda_url`
 - `start_at`
 - `end_at`
 - `description`
 - `attendees`
+- `external_attendees`
+- `agenda`
+- `meeting_content`
+- `meeting_result`
+- `minutes_attachment`
 
 Response `200 OK`
 
@@ -314,3 +351,65 @@ Response `200 OK`
 ### 4.4 `DELETE /reservations/{reservation_id}`
 
 Response `204 No Content`
+
+### 4.5 `GET /reservations`
+
+회의록 Wiki 목록 조회. 전체 예약을 대상으로 필터링 가능.
+
+Query parameters (모두 Optional)
+
+| 이름 | 타입 | 설명 |
+|------|------|------|
+| recent_months | int | 최근 N개월 |
+| month | int | 월(1~12) |
+| day | int | 일(1~31) |
+| label | string | 라벨 |
+| creator | string | 예약자(이름/이메일) 키워드 |
+| attendee | string | 참석자(내부/외부) 키워드 |
+
+Response `200 OK`
+
+- 응답 스키마는 `GET /reservations/{reservation_id}`와 동일한 객체 배열
+
+### 4.6 `GET /reservations/{reservation_id}/minutes`
+
+회의록 상세 조회(예약 생성자 제한 없이 로그인 사용자면 조회 가능).
+
+### 4.7 `PATCH /reservations/{reservation_id}/minutes`
+
+회의록 상세 수정(제목/라벨/시간/참석자/회의록 필드 포함).
+
+### 4.8 `GET /reservations/{reservation_id}/minutes-lock`
+
+현재 회의록 수정 잠금 조회.
+
+Response `200 OK` (잠금 있음)
+
+```json
+{
+  "reservation_id": "rsv_xxx",
+  "holder_user_id": "1",
+  "holder_name": "관리자",
+  "expires_at": "2026-04-08T12:01:30+00:00"
+}
+```
+
+Response `200 OK` (잠금 없음)
+
+```json
+null
+```
+
+### 4.9 `POST /reservations/{reservation_id}/minutes-lock`
+
+회의록 수정 잠금 획득/갱신.
+
+Request body
+
+| 이름 | 타입 | 필수 | 기본값 | 설명 |
+|------|------|------|--------|------|
+| ttl_seconds | int | N | 15 | 잠금 유지 시간(5~120초) |
+
+### 4.10 `DELETE /reservations/{reservation_id}/minutes-lock`
+
+회의록 수정 잠금 해제.

@@ -37,6 +37,21 @@ async def find_owned_reservation_with_timetable_and_creator(
     return item
 
 
+async def find_reservation_with_timetable_and_creator(
+    db: AsyncSession, reservation_id: str
+) -> tuple[Reservation, Timetable, User] | None:
+    row = await db.execute(
+        select(Reservation, Timetable, User)
+        .join(Timetable, Timetable.id == Reservation.timetable_id)
+        .join(User, User.id == Reservation.user_id)
+        .where(Reservation.id == reservation_id)
+    )
+    item = row.tuples().first()
+    if item is None:
+        return None
+    return item
+
+
 async def find_reservation_conflict(
     db: AsyncSession,
     room_id: str,
@@ -100,5 +115,17 @@ async def list_month_preview_rows(
             Timetable.start_at < month_end,
         )
         .order_by(Timetable.start_at.asc())
+    )
+    return list(rows.tuples().all())
+
+
+async def list_all_reservations_with_timetable_and_creator(
+    db: AsyncSession,
+) -> list[tuple[Reservation, Timetable, User]]:
+    rows = await db.execute(
+        select(Reservation, Timetable, User)
+        .join(Timetable, Timetable.id == Reservation.timetable_id)
+        .join(User, User.id == Reservation.user_id)
+        .order_by(Timetable.start_at.desc())
     )
     return list(rows.tuples().all())

@@ -1,12 +1,12 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { 
-  MyMeetingsPage, 
-  TimetablePage, 
-  LoginPage, 
+import {
+  MyMeetingsPage,
+  TimetablePage,
+  LoginPage,
   ChangePasswordPage,
   DashboardPage,
   MinutesPage,
-  MinutesWikiPage
+  MinutesWikiPage,
 } from './pages';
 import MainLayout from './layouts/MainLayout';
 
@@ -17,7 +17,7 @@ function App() {
         <Route element={<MainLayout />}>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/timetable" element={<TimetablePage />} />
-          <Route path="/minutes" element={<MinutesPage />} />
+          <Route path="/minutes" element={<MinutesWikiPage />} />
           <Route path="/minutes/:reservationId" element={<MinutesPage />} />
           <Route path="/minutes-wiki" element={<MinutesWikiPage />} />
           <Route path="/my-meetings" element={<MyMeetingsPage />} />

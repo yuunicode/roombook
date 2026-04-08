@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.infra import reservation, reservation_attendee, timetable, user  # noqa: F401
+from app.infra import minutes_lock, reservation, reservation_attendee, timetable, user  # noqa: F401
 from app.infra.db import Base, get_db_session
 from app.infra.user import User
 from app.main import app
@@ -33,12 +33,14 @@ def client() -> Iterator[TestClient]:
                         id="1",
                         name="관리자",
                         email="admin@ecminer.com",
+                        department="운영팀",
                         password_hash=hash_password("ecminer"),
                     ),
                     User(
                         id="2",
                         name="일반사용자",
                         email="user@ecminer.com",
+                        department="개발팀",
                         password_hash=hash_password("ecminer2"),
                     ),
                 ]

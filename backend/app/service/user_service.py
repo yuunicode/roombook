@@ -7,6 +7,7 @@ from app.infra.user_repo import (
     add_user,
     find_user_by_email_ci,
     find_user_by_id,
+    list_users,
     resolve_user_ids_by_ids_or_emails,
     search_users_by_query,
 )
@@ -45,6 +46,18 @@ async def search_users(
     return [UserSearchItem(id=user_id, name=name, email=email) for user_id, name, email in rows]
 
 
+async def list_all_users(
+    auth_user_id: str,
+    db: AsyncSession,
+) -> list[CreatedUser] | DomainError:
+    del auth_user_id
+    rows = await list_users(db)
+    return [
+        CreatedUser(id=user_id, name=name, email=email, department=department)
+        for user_id, name, email, department in rows
+    ]
+
+
 async def resolve_attendee_user_ids(
     attendees: list[str] | None,
     db: AsyncSession,
@@ -81,8 +94,17 @@ async def create_user_by_admin(
     normalized_department = payload_department.strip()
     raw_password = payload_password.strip()
 
-    if not normalized_id or not normalized_name or not normalized_email or not normalized_department or not raw_password:
-        return DomainError(code="INVALID_ARGUMENT", message="id, name, email, department, password는 비어 있을 수 없습니다.")
+    if (
+        not normalized_id
+        or not normalized_name
+        or not normalized_email
+        or not normalized_department
+        or not raw_password
+    ):
+        return DomainError(
+            code="INVALID_ARGUMENT",
+            message="id, name, email, department, password는 비어 있을 수 없습니다.",
+        )
 
     if not is_admin_user(auth_user.id, auth_user.email):
         return DomainError(code="FORBIDDEN", message="관리자만 사용자 계정을 생성할 수 있습니다.")

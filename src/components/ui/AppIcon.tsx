@@ -9,7 +9,8 @@ type AppIconProps = {
     | 'settings'
     | 'users'
     | 'arrow-left'
-    | 'chevron-down';
+    | 'chevron-down'
+    | 'download';
   className?: string;
   style?: React.CSSProperties;
 };
@@ -113,6 +114,16 @@ function AppIcon({ name, className, style }: AppIconProps) {
     return (
       <svg {...commonProps}>
         <path d="M6 9l6 6 6-6" />
+      </svg>
+    );
+  }
+
+  if (name === 'download') {
+    return (
+      <svg {...commonProps}>
+        <path d="M12 4v10" />
+        <path d="M8 10l4 4 4-4" />
+        <path d="M5 19h14" />
       </svg>
     );
   }

@@ -105,11 +105,11 @@ async def change_password(
     user = await _find_user_by_id(db, user_id)
     if user is None:
         return False
-    
+
     # 현재 비밀번호 확인
     if not verify_password(current_password, user.password_hash):
         return False
-    
+
     # 새 비밀번호로 업데이트
     user.password_hash = hash_password(new_password)
     db.add(user)

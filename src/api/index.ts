@@ -1,7 +1,3 @@
-/**
- * API 클라이언트 및 엔드포인트 호출 함수
- * 예: getRooms(), createBooking() 등
- */
 type ApiErrorPayload = {
   error?: {
     code?: string;
@@ -9,10 +5,11 @@ type ApiErrorPayload = {
   };
 };
 
-type UserDto = {
+export type UserDto = {
   id: string;
   name: string;
   email: string;
+  department?: string;
 };
 
 type AuthResponse = {
@@ -24,11 +21,69 @@ type CreateUserPayload = {
   name: string;
   email: string;
   password: string;
+  department: string;
 };
 
 type ChangePasswordPayload = {
   current_password: string;
   new_password: string;
+};
+
+export type ReservationDto = {
+  id: string;
+  room_id: string;
+  room_name: string;
+  title: string;
+  label: string;
+  start_at: string;
+  end_at: string;
+  purpose?: string | null;
+  agenda_url?: string | null;
+  description?: string | null;
+  external_attendees?: string | null;
+  agenda?: string | null;
+  meeting_content?: string | null;
+  meeting_result?: string | null;
+  minutes_attachment?: string | null;
+  created_by: {
+    name: string;
+    email: string;
+  };
+  attendees: Array<{
+    id: string;
+    name: string;
+    email: string;
+  }>;
+};
+
+type ReservationUpsertPayload = {
+  room_id?: string;
+  title: string;
+  label?: string;
+  start_at: string;
+  end_at: string;
+  attendees?: string[];
+  external_attendees?: string;
+  agenda?: string;
+  meeting_content?: string;
+  meeting_result?: string;
+  minutes_attachment?: string;
+};
+
+type ReservationQuery = {
+  recent_months?: number;
+  month?: number;
+  day?: number;
+  label?: string;
+  creator?: string;
+  attendee?: string;
+};
+
+export type MinutesLockDto = {
+  reservation_id: string;
+  holder_user_id: string;
+  holder_name: string;
+  expires_at: string;
 };
 
 const API_BASE = '/api';
@@ -53,6 +108,10 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
       message = fallbackMessage;
     }
     throw new Error(message);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return (await response.json()) as T;
@@ -80,10 +139,81 @@ export async function createCompanyUser(payload: CreateUserPayload): Promise<Use
   });
 }
 
+export async function listCompanyUsers(): Promise<UserDto[]> {
+  return requestJson<UserDto[]>('/users', {
+    method: 'GET',
+  });
+}
+
 export async function changePassword(payload: ChangePasswordPayload): Promise<UserDto> {
   const result = await requestJson<AuthResponse>('/auth/change-password', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
   return result.user;
+}
+
+function toQueryString(query: ReservationQuery): string {
+  const params = new URLSearchParams();
+  if (query.recent_months !== undefined) params.set('recent_months', String(query.recent_months));
+  if (query.month !== undefined) params.set('month', String(query.month));
+  if (query.day !== undefined) params.set('day', String(query.day));
+  if (query.label) params.set('label', query.label);
+  if (query.creator) params.set('creator', query.creator);
+  if (query.attendee) params.set('attendee', query.attendee);
+  const encoded = params.toString();
+  return encoded ? `?${encoded}` : '';
+}
+
+export async function listReservations(query: ReservationQuery = {}): Promise<ReservationDto[]> {
+  return requestJson<ReservationDto[]>(`/reservations${toQueryString(query)}`, {
+    method: 'GET',
+  });
+}
+
+export async function createReservation(
+  payload: ReservationUpsertPayload
+): Promise<ReservationDto> {
+  return requestJson<ReservationDto>('/reservations', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateReservationMinutes(
+  reservationId: string,
+  payload: ReservationUpsertPayload
+): Promise<ReservationDto> {
+  return requestJson<ReservationDto>(`/reservations/${reservationId}/minutes`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteReservation(reservationId: string): Promise<void> {
+  await requestJson<void>(`/reservations/${reservationId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getMinutesLock(reservationId: string): Promise<MinutesLockDto | null> {
+  return requestJson<MinutesLockDto | null>(`/reservations/${reservationId}/minutes-lock`, {
+    method: 'GET',
+  });
+}
+
+export async function acquireMinutesLock(
+  reservationId: string,
+  ttlSeconds = 15
+): Promise<MinutesLockDto> {
+  return requestJson<MinutesLockDto>(`/reservations/${reservationId}/minutes-lock`, {
+    method: 'POST',
+    body: JSON.stringify({ ttl_seconds: ttlSeconds }),
+  });
+}
+
+export async function releaseMinutesLock(reservationId: string): Promise<void> {
+  await requestJson<void>(`/reservations/${reservationId}/minutes-lock`, {
+    method: 'DELETE',
+  });
 }

@@ -30,6 +30,13 @@ async def search_users_by_query(db: AsyncSession, q: str, limit: int) -> list[tu
     return list(rows.tuples().all())
 
 
+async def list_users(db: AsyncSession) -> list[tuple[str, str, str, str]]:
+    rows = await db.execute(
+        select(User.id, User.name, User.email, User.department).order_by(User.name.asc())
+    )
+    return list(rows.tuples().all())
+
+
 async def resolve_user_ids_by_ids_or_emails(db: AsyncSession, identifiers: list[str]) -> dict[str, str]:
     if not identifiers:
         return {}

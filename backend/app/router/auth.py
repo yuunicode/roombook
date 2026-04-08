@@ -148,7 +148,7 @@ async def change_password_endpoint(
         payload.new_password,
         db,
     )
-    
+
     if not success:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -159,6 +159,6 @@ async def change_password_endpoint(
                 }
             },
         )
-    
+
     await db.commit()
     return AuthResponse(user=_to_user_response(user))

@@ -22,9 +22,15 @@ class Reservation(Base):
         nullable=False,
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
+    label: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     purpose: Mapped[str | None] = mapped_column(String(500), nullable=True)
     agenda_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    external_attendees: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    agenda: Mapped[str | None] = mapped_column(String(4000), nullable=True)
+    meeting_content: Mapped[str | None] = mapped_column(String(8000), nullable=True)
+    meeting_result: Mapped[str | None] = mapped_column(String(8000), nullable=True)
+    minutes_attachment: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

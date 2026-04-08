@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { loginWithPassword } from '../api';
 import { useAppState } from '../stores';
 import brandMark from '../brand-mark.svg';
 
@@ -18,10 +19,16 @@ function LoginPage() {
       return;
     }
     setIsSubmitting(true);
-    await new Promise(resolve => setTimeout(resolve, 600));
-    setUserEmail(email.trim().toLowerCase());
-    setIsSubmitting(false);
-    navigate('/');
+    setErrorMessage('');
+    try {
+      const user = await loginWithPassword(email.trim().toLowerCase(), password);
+      setUserEmail(user.email);
+      navigate('/');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '로그인에 실패했습니다.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -35,35 +42,44 @@ function LoginPage() {
         <form className="auth-form" onSubmit={handleLogin}>
           <div className="auth-input-group">
             <label className="auth-label">Email</label>
-            <input 
-              className="auth-input" 
-              type="email" 
-              value={email} 
-              onChange={(e) => setEmail(e.target.value)} 
-              required 
-              placeholder="name@company.com" 
+            <input
+              className="auth-input"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="name@company.com"
               autoFocus
             />
           </div>
           <div className="auth-input-group">
             <label className="auth-label">Password</label>
-            <input 
-              className="auth-input" 
-              type="password" 
-              value={password} 
-              onChange={(e) => setPassword(e.target.value)} 
-              required 
-              placeholder="••••••••" 
+            <input
+              className="auth-input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              placeholder="••••••••"
             />
           </div>
-          
-          {errorMessage && <p className="linear-error-message" style={{ textAlign: 'center' }}>{errorMessage}</p>}
-          
+
+          {errorMessage && (
+            <p className="linear-error-message" style={{ textAlign: 'center' }}>
+              {errorMessage}
+            </p>
+          )}
+
           <button className="auth-submit-button" type="submit" disabled={isSubmitting}>
             {isSubmitting ? 'Signing in...' : 'Sign in'}
           </button>
-          
-          <button className="nav-menu-item" type="button" onClick={() => navigate('/')} style={{ marginTop: '8px' }}>
+
+          <button
+            className="nav-menu-item"
+            type="button"
+            onClick={() => navigate('/')}
+            style={{ marginTop: '8px' }}
+          >
             Cancel
           </button>
         </form>

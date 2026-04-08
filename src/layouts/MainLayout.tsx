@@ -19,7 +19,6 @@ function MainLayout() {
 
   const navItems = [
     { label: '회의실 예약', path: '/timetable' },
-    { label: '회의록 작성', path: '/minutes' },
     { label: '회의록 Wiki', path: '/minutes-wiki' },
   ];
 
@@ -47,7 +46,9 @@ function MainLayout() {
 
         <div className="header-right">
           {!isLoggedIn ? (
-            <button className="login-trigger" onClick={() => navigate('/login')}>LOGIN</button>
+            <button className="login-trigger" onClick={() => navigate('/login')}>
+              LOGIN
+            </button>
           ) : (
             <div className="user-profile-wrapper">
               <button
@@ -55,16 +56,29 @@ function MainLayout() {
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
               >
                 <span className="user-name-text">{displayName}</span>
-                <AppIcon name="chevron-down" className={`chevron-icon ${isUserMenuOpen ? 'open' : ''}`} />
+                <AppIcon
+                  name="chevron-down"
+                  className={`chevron-icon ${isUserMenuOpen ? 'open' : ''}`}
+                />
               </button>
-              
+
               {isUserMenuOpen && (
                 <div className="user-dropdown-popover">
                   <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
                     <p style={{ fontSize: '11px', color: 'var(--text-soft)' }}>{userEmail}</p>
                   </div>
-                  <button className="popover-item" onClick={() => { setIsUserMenuOpen(false); navigate('/change-password'); }}>비밀번호 변경</button>
-                  <button className="popover-item logout-item" onClick={handleLogout}>로그아웃</button>
+                  <button
+                    className="popover-item"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      navigate('/change-password');
+                    }}
+                  >
+                    비밀번호 변경
+                  </button>
+                  <button className="popover-item logout-item" onClick={handleLogout}>
+                    로그아웃
+                  </button>
                 </div>
               )}
             </div>

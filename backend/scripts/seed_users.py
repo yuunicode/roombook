@@ -12,26 +12,30 @@ from app.service.auth_service import hash_password
 
 USERS_DATA = [
     # R&D센터
-    {"id": "r&d_001", "name": "구지윤", "email": "jykoo@ecminer.com", "department": "R&D센터"},
-    {"id": "r&d_002", "name": "최숙", "email": "choisook@ecminer.com", "department": "R&D센터"},
-    {"id": "r&d_003", "name": "김형준", "email": "hjkim@ecminer.com", "department": "R&D센터"},
-    {"id": "r&d_004", "name": "김범곤", "email": "bgkim@ecminer.com", "department": "R&D센터"},
-    {"id": "r&d_005", "name": "박재열", "email": "jypark@ecminer.com", "department": "R&D센터"},
-    {"id": "r&d_006", "name": "최환민", "email": "hmchoi@ecminer.com", "department": "R&D센터"},
-    {"id": "r&d_007", "name": "이한빛", "email": "hblee@ecminer.com", "department": "R&D센터"},
-    {"id": "r&d_008", "name": "이송화", "email": "shlee1@ecminer.com", "department": "R&D센터"},
-    {"id": "r&d_009", "name": "구하은", "email": "hekoo@ecminer.com", "department": "R&D센터"},
-    {"id": "r&d_010", "name": "공보름", "email": "brgong@ecminer.com", "department": "R&D센터"},
-    {"id": "r&d_011", "name": "구완모", "email": "wmku@ecminer.com", "department": "R&D센터"},
-    {"id": "r&d_012", "name": "김윤호", "email": "yhkim@ecminer.com", "department": "R&D센터"},
+    {"name": "최숙", "email": "choisook@ecminer.com", "department": "R&D센터"},
+    {"name": "김형준", "email": "hjkim@ecminer.com", "department": "R&D센터"},
+    {"name": "김범곤", "email": "bgkim@ecminer.com", "department": "R&D센터"},
+    {"name": "박재열", "email": "jypark@ecminer.com", "department": "R&D센터"},
+    {"name": "최환민", "email": "hmchoi@ecminer.com", "department": "R&D센터"},
+    {"name": "이한빛", "email": "hblee@ecminer.com", "department": "R&D센터"},
+    {"name": "이송화", "email": "shlee1@ecminer.com", "department": "R&D센터"},
+    {"name": "구지윤", "email": "jykoo@ecminer.com", "department": "R&D센터"},
+    {"name": "구하은", "email": "hekoo@ecminer.com", "department": "R&D센터"},
+    {"name": "공보름", "email": "brgong@ecminer.com", "department": "R&D센터"},
+    {"name": "구완모", "email": "wmku@ecminer.com", "department": "R&D센터"},
+    {"name": "조정흠", "email": "jeonghum@ecminer.com", "department": "R&D센터"},
+    {"name": "김윤호", "email": "yhkim@ecminer.com", "department": "R&D센터"},
     # 컨설팅
-    {"id": "consulting_001", "name": "권경원", "email": "kwkwon@ecminer.com", "department": "컨설팅"},
-    {"id": "consulting_002", "name": "최훈영", "email": "hychoi@ecminer.com", "department": "컨설팅"},
-    {"id": "consulting_003", "name": "신민수", "email": "msshin@ecminer.com", "department": "컨설팅"},
-    {"id": "consulting_004", "name": "손준성", "email": "jsson@ecminer.com", "department": "컨설팅"},
-    {"id": "consulting_005", "name": "박진윤", "email": "jinypark@ecminer.com", "department": "컨설팅"},
-    {"id": "consulting_006", "name": "이동욱", "email": "dwlee@ecminer.com", "department": "컨설팅"},
-    {"id": "consulting_007", "name": "김선중", "email": "sjkim@ecminer.com", "department": "컨설팅"},
+    {"name": "최훈영", "email": "hychoi@ecminer.com", "department": "컨설팅"},
+    {"name": "권경원", "email": "kwkwon@ecminer.com", "department": "컨설팅"},
+    {"name": "신민수", "email": "msshin@ecminer.com", "department": "컨설팅"},
+    {"name": "손준성", "email": "jsson@ecminer.com", "department": "컨설팅"},
+    {"name": "박진윤", "email": "jinypark@ecminer.com", "department": "컨설팅"},
+    {"name": "이동욱", "email": "dwlee@ecminer.com", "department": "컨설팅"},
+    {"name": "박준정", "email": "jjpark@ecminer.com", "department": "컨설팅"},
+    {"name": "김선중", "email": "sjkim@ecminer.com", "department": "컨설팅"},
+    {"name": "김기훈", "email": "ghkim@ecminer.com", "department": "컨설팅"},
+    {"name": "이지윤", "email": "jylee@ecminer.com", "department": "컨설팅"},
 ]
 
 
@@ -51,9 +55,11 @@ async def seed_users() -> None:
                     print(f"SKIP {user_data['name']} <{normalized_email}> already exists")
                     continue
 
+                user_id = normalized_email.split("@", 1)[0]
+
                 session.add(
                     User(
-                        id=user_data["id"],
+                        id=user_id,
                         name=user_data["name"],
                         email=normalized_email,
                         department=user_data["department"],
