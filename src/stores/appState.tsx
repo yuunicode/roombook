@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ReservationDraft, ReservationStatus, TimetableReservation } from '../components';
 
@@ -12,6 +13,11 @@ type AppUser = {
 type AppReservation = TimetableReservation & {
   room: string;
   attendees: AppUser[];
+};
+
+type StoredReservation = Omit<AppReservation, 'start' | 'end'> & {
+  start: string;
+  end: string;
 };
 
 type AppStateContextValue = {
@@ -53,8 +59,8 @@ function AppStateProvider({ children }: { children: ReactNode }) {
   const [reservations, setReservations] = useState<AppReservation[]>(() => {
     const saved = window.localStorage.getItem(RESERVATIONS_KEY);
     if (saved) {
-      const parsed = JSON.parse(saved);
-      return parsed.map((item: any) => ({
+      const parsed = JSON.parse(saved) as StoredReservation[];
+      return parsed.map((item) => ({
         ...item,
         start: new Date(item.start),
         end: new Date(item.end),

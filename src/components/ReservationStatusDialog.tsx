@@ -16,7 +16,6 @@ type ReservationStatus = {
 type ReservationStatusDialogProps = {
   isOpen: boolean;
   reservation: ReservationStatus | null;
-  currentUserEmail: string;
   users: AppUser[];
   onClose: () => void;
   onSave: (reservationId: string, payload: Omit<ReservationStatus, 'id' | 'creatorEmail'>) => void;
@@ -26,7 +25,6 @@ type ReservationStatusDialogProps = {
 function ReservationStatusDialog({
   isOpen,
   reservation,
-  currentUserEmail,
   users,
   onClose,
   onSave,

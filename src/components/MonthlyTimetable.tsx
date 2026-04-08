@@ -10,8 +10,9 @@ import { ko } from 'date-fns/locale';
 import {
   getReservationEventStyle,
   getReservationOwnerName,
-  type TimetableReservation,
-} from './WeeklyTimetable';
+} from './weeklyTimetableUtils';
+import type { TimetableReservation } from './WeeklyTimetable';
+import type { DateCellWrapperProps } from 'react-big-calendar';
 
 const locales = {
   ko,
@@ -35,7 +36,11 @@ function MonthlyEventItem({ event }: EventProps<TimetableReservation>) {
  * 월간 뷰 날짜 셀 클릭 시 정확한 날짜를 전달하기 위한 래퍼
  * CSS로 주말을 숨겼을 때 발생하는 좌표 오차를 무시하고 실제 데이터 날짜를 사용합니다.
  */
-const DateCellWrapper = ({ children, value, onSelect }: any) => {
+type DateCellWrapperWithSelectProps = DateCellWrapperProps & {
+  onSelect: (date: Date) => void;
+};
+
+const DateCellWrapper = ({ children, value, onSelect }: DateCellWrapperWithSelectProps) => {
   const day = value.getDay();
   const isWeekend = day === 0 || day === 6;
   
@@ -49,13 +54,21 @@ const DateCellWrapper = ({ children, value, onSelect }: any) => {
   });
 };
 
+type MonthlyTimetableProps = {
+  reservations: TimetableReservation[];
+  currentDate: Date;
+  onNavigate: (nextDate: Date) => void;
+  onSelectSlot: (start: Date, end: Date) => void;
+  onSelectReservation?: (reservation: TimetableReservation) => void;
+};
+
 function MonthlyTimetable({
   reservations,
   currentDate,
   onNavigate,
   onSelectSlot,
   onSelectReservation,
-}: any) {
+}: MonthlyTimetableProps) {
   // onSelectSlot을 수동으로 호출하기 위한 핸들러
   const handleDayClick = (date: Date) => {
     const start = new Date(date);
@@ -82,7 +95,7 @@ function MonthlyTimetable({
         style={{ height: 750 }}
         components={{
           event: MonthlyEventItem,
-          dateCellWrapper: (props: any) => (
+          dateCellWrapper: (props: DateCellWrapperProps) => (
             <DateCellWrapper {...props} onSelect={handleDayClick} />
           ),
         }}

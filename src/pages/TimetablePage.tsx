@@ -7,7 +7,6 @@ import {
   ReservationStatusDialog,
   WeeklyTimetable,
   type ReservationDraft,
-  type ReservationStatus,
   type TimetableReservation,
 } from '../components';
 import { useAppState } from '../stores';
@@ -47,7 +46,6 @@ function TimetablePage() {
   const [reservationEnd, setReservationEnd] = useState<Date>(new Date(roundToNearestHalfHour(new Date()).getTime() + 60 * 60 * 1000));
   const [selectedReservationId, setSelectedReservationId] = useState<string | null>(null);
 
-  const displayName = isLoggedIn ? userEmail.split('@')[0] : '';
   const roomOptions = [
     { id: 'room-a', name: '회의실', capacity: '30명', icon: 'room' as const },
     { id: 'room-b', name: '회의테이블', capacity: '6명', icon: 'room' as const },
@@ -169,7 +167,7 @@ function TimetablePage() {
       </section>
 
       <ReservationDialog isOpen={isReservationOpen} initialStart={reservationStart} initialEnd={reservationEnd} currentUser={currentUser} users={users} onClose={() => setIsReservationOpen(false)} onConfirm={handleConfirmReservation} />
-      <ReservationStatusDialog isOpen={isReservationStatusOpen} reservation={selectedReservation} currentUserEmail={userEmail} users={users} onClose={() => setIsReservationStatusOpen(false)} onSave={updateReservation} onDelete={deleteReservation} />
+      <ReservationStatusDialog isOpen={isReservationStatusOpen} reservation={selectedReservation} users={users} onClose={() => setIsReservationStatusOpen(false)} onSave={updateReservation} onDelete={deleteReservation} />
     </div>
   );
 }

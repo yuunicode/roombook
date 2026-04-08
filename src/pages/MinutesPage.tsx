@@ -27,7 +27,7 @@ function MinutesPage() {
 
   // STT 시뮬레이션 로직 (백엔드 연결 전 프론트엔드 목업)
   useEffect(() => {
-    let interval: any;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (isRecording) {
       const mockTexts = [
         "안녕하세요, 오늘 프로젝트 일정 논의 시작하겠습니다.",
@@ -50,7 +50,11 @@ function MinutesPage() {
         }
       }, 2000);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
   }, [isRecording]);
 
   const handleStartRecording = () => {

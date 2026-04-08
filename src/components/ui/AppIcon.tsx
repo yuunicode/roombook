@@ -8,11 +8,13 @@ type AppIconProps = {
     | 'user'
     | 'settings'
     | 'users'
-    | 'arrow-left';
+    | 'arrow-left'
+    | 'chevron-down';
   className?: string;
+  style?: React.CSSProperties;
 };
 
-function AppIcon({ name, className }: AppIconProps) {
+function AppIcon({ name, className, style }: AppIconProps) {
   const commonProps = {
     viewBox: '0 0 24 24',
     fill: 'none',
@@ -21,6 +23,7 @@ function AppIcon({ name, className }: AppIconProps) {
     strokeLinecap: 'round' as const,
     strokeLinejoin: 'round' as const,
     className,
+    style,
     'aria-hidden': true,
   };
 
@@ -102,6 +105,14 @@ function AppIcon({ name, className }: AppIconProps) {
         <path d="M16.5 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" />
         <path d="M4.5 18c.9-2.2 2.5-3.3 4.5-3.3s3.6 1.1 4.5 3.3" />
         <path d="M13.5 18c.6-1.5 1.8-2.4 3.4-2.4 1.2 0 2.2.5 3.1 1.7" />
+      </svg>
+    );
+  }
+
+  if (name === 'chevron-down') {
+    return (
+      <svg {...commonProps}>
+        <path d="M6 9l6 6 6-6" />
       </svg>
     );
   }

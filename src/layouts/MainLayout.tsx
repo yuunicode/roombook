@@ -10,8 +10,6 @@ function MainLayout() {
   const { isLoggedIn, userEmail, logout } = useAppState();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const displayName = isLoggedIn ? userEmail.split('@')[0] : '';
-  const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL ?? 'admin@ecminer.com').toLowerCase();
-  const isAdmin = isLoggedIn && userEmail.toLowerCase() === adminEmail;
 
   const handleLogout = () => {
     logout();
@@ -65,9 +63,6 @@ function MainLayout() {
                     <p style={{ fontSize: '11px', color: 'var(--text-soft)' }}>{userEmail}</p>
                   </div>
                   <button className="popover-item" onClick={() => { setIsUserMenuOpen(false); navigate('/change-password'); }}>비밀번호 변경</button>
-                  {isAdmin && (
-                    <button className="popover-item" onClick={() => { setIsUserMenuOpen(false); navigate('/admin/users'); }}>사용자 관리</button>
-                  )}
                   <button className="popover-item logout-item" onClick={handleLogout}>로그아웃</button>
                 </div>
               )}
