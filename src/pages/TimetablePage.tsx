@@ -32,6 +32,7 @@ function TimetablePage() {
     isLoggedIn,
     users,
     reservations,
+    reservationLabels,
     addReservation,
     updateReservation,
     deleteReservation,
@@ -166,8 +167,8 @@ function TimetablePage() {
         </section>
       </section>
 
-      <ReservationDialog isOpen={isReservationOpen} initialStart={reservationStart} initialEnd={reservationEnd} currentUser={currentUser} users={users} onClose={() => setIsReservationOpen(false)} onConfirm={handleConfirmReservation} />
-      <ReservationStatusDialog isOpen={isReservationStatusOpen} reservation={selectedReservation} users={users} onClose={() => setIsReservationStatusOpen(false)} onSave={updateReservation} onDelete={deleteReservation} />
+      <ReservationDialog isOpen={isReservationOpen} initialStart={reservationStart} initialEnd={reservationEnd} currentUser={currentUser} users={users} labelOptions={reservationLabels} onClose={() => setIsReservationOpen(false)} onConfirm={handleConfirmReservation} />
+      <ReservationStatusDialog isOpen={isReservationStatusOpen} reservation={selectedReservation} users={users} labelOptions={reservationLabels} onClose={() => setIsReservationStatusOpen(false)} onSave={updateReservation} onDelete={deleteReservation} />
     </div>
   );
 }

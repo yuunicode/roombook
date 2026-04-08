@@ -7,10 +7,14 @@ import Dialog from './ui/Dialog';
 
 type ReservationDraft = {
   title: string;
+  label: string;
   start: Date;
   end: Date;
   attendees: AppUser[];
+  externalAttendees: string;
   agenda: string;
+  meetingContent: string;
+  meetingResult: string;
   minutesAttachment: string;
 };
 
@@ -20,6 +24,7 @@ type ReservationDialogProps = {
   initialEnd: Date;
   currentUser: AppUser | null;
   users: AppUser[];
+  labelOptions: string[];
   onClose: () => void;
   onConfirm: (draft: ReservationDraft) => void;
 };
@@ -39,13 +44,16 @@ function ReservationDialog({
   initialEnd,
   currentUser,
   users,
+  labelOptions,
   onClose,
   onConfirm,
 }: ReservationDialogProps) {
+  const [selectedLabel, setSelectedLabel] = useState('');
   const [title, setTitle] = useState('');
   const [agenda, setAgenda] = useState('');
   const [attendeeQuery, setAttendeeQuery] = useState('');
   const [selectedAttendees, setSelectedAttendees] = useState<AppUser[]>([]);
+  const [externalAttendees, setExternalAttendees] = useState('');
 
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialStart);
   const [startTime, setStartTime] = useState(format(initialStart, 'HH:mm'));
@@ -55,9 +63,11 @@ function ReservationDialog({
   useEffect(() => {
     if (isOpen) {
       setTitle('');
+      setSelectedLabel(labelOptions[0] ?? '');
       setAgenda('');
       setAttendeeQuery('');
       setSelectedAttendees(currentUser ? [currentUser] : []);
+      setExternalAttendees('');
       setSelectedDate(initialStart);
 
       // Ensure initial times are within our 09:00-18:00 bounds for the UI
@@ -67,7 +77,7 @@ function ReservationDialog({
       setEndTime(TIME_SLOTS.includes(endStr) ? endStr : '10:00');
       setIsSelectingEnd(false);
     }
-  }, [isOpen, currentUser, initialStart, initialEnd]);
+  }, [isOpen, currentUser, initialStart, initialEnd, labelOptions]);
 
   const filteredUsers = useMemo(() => {
     const keyword = attendeeQuery.trim().toLowerCase();
@@ -83,10 +93,14 @@ function ReservationDialog({
 
     onConfirm({
       title: title.trim(),
+      label: selectedLabel,
       start,
       end,
       attendees: selectedAttendees,
+      externalAttendees: externalAttendees.trim(),
       agenda: agenda.trim(),
+      meetingContent: '',
+      meetingResult: '',
       minutesAttachment: '',
     });
   };
@@ -172,6 +186,26 @@ function ReservationDialog({
 
           <div className="status-card-body">
             <div className="status-info-group">
+              <label className="status-info-label">라벨</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {labelOptions.map((label) => (
+                  <button
+                    key={label}
+                    type="button"
+                    className="room-capacity-tag"
+                    style={{
+                      background: selectedLabel === label ? 'rgba(94, 106, 210, 0.12)' : undefined,
+                      color: selectedLabel === label ? 'var(--accent)' : undefined,
+                    }}
+                    onClick={() => setSelectedLabel(label)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="status-info-group">
               <label className="status-info-label">회의 제목</label>
               <input
                 className="linear-input"
@@ -183,7 +217,7 @@ function ReservationDialog({
             </div>
 
             <div className="status-info-group">
-              <label className="status-info-label">참석자 초대</label>
+              <label className="status-info-label">내부 참석자</label>
               <input
                 className="linear-input"
                 style={{ marginBottom: '8px' }}
@@ -219,13 +253,23 @@ function ReservationDialog({
             </div>
 
             <div className="status-info-group">
-              <label className="status-info-label">회의 안건</label>
+              <label className="status-info-label">외부 참석자</label>
+              <input
+                className="linear-input"
+                value={externalAttendees}
+                onChange={(e) => setExternalAttendees(e.target.value)}
+                placeholder="외부 참석자를 입력하세요"
+              />
+            </div>
+
+            <div className="status-info-group">
+              <label className="status-info-label">주요 안건</label>
               <textarea
                 className="minutes-textarea"
-                style={{ minHeight: '120px', padding: '12px', fontSize: '14px' }}
+                style={{ minHeight: '120px', padding: '12px', fontSize: '14px', resize: 'none' }}
                 value={agenda}
                 onChange={(e) => setAgenda(e.target.value)}
-                placeholder="안건을 입력하세요"
+                placeholder="주요 안건을 입력하세요"
               />
             </div>
           </div>

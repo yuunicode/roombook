@@ -25,6 +25,7 @@ type AppStateContextValue = {
   isLoggedIn: boolean;
   users: AppUser[];
   reservations: AppReservation[];
+  reservationLabels: string[];
   setUserEmail: (email: string) => void;
   addUser: (user: AppUser) => void;
   logout: () => void;
@@ -42,6 +43,8 @@ const AppStateContext = createContext<AppStateContextValue | null>(null);
 const SESSION_KEY = 'roombook_session_email';
 const USERS_KEY = 'roombook_users';
 const RESERVATIONS_KEY = 'roombook_reservations';
+const RESERVATION_LABELS_KEY = 'roombook_reservation_labels';
+const DEFAULT_RESERVATION_LABELS = ['AIDA', '부동산', 'KETI'];
 
 function AppStateProvider({ children }: { children: ReactNode }) {
   const [userEmail, setUserEmailState] = useState<string>(() => {
@@ -62,11 +65,25 @@ function AppStateProvider({ children }: { children: ReactNode }) {
       const parsed = JSON.parse(saved) as StoredReservation[];
       return parsed.map((item) => ({
         ...item,
+        label: item.label ?? '',
         start: new Date(item.start),
         end: new Date(item.end),
+        externalAttendees: item.externalAttendees ?? '',
+        agenda: item.agenda ?? '',
+        meetingContent: item.meetingContent ?? '',
+        meetingResult: item.meetingResult ?? '',
       }));
     }
     return [];
+  });
+
+  const [reservationLabels] = useState<string[]>(() => {
+    const saved = window.localStorage.getItem(RESERVATION_LABELS_KEY);
+    const parsed = saved ? JSON.parse(saved) : null;
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+      return parsed;
+    }
+    return DEFAULT_RESERVATION_LABELS;
   });
 
   useEffect(() => {
@@ -77,11 +94,16 @@ function AppStateProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(RESERVATIONS_KEY, JSON.stringify(reservations));
   }, [reservations]);
 
+  useEffect(() => {
+    window.localStorage.setItem(RESERVATION_LABELS_KEY, JSON.stringify(reservationLabels));
+  }, [reservationLabels]);
+
   const value = useMemo<AppStateContextValue>(() => ({
     userEmail,
     isLoggedIn: Boolean(userEmail),
     users,
     reservations,
+    reservationLabels,
     setUserEmail: (email) => {
       const normalized = email.trim().toLowerCase();
       setUserEmailState(normalized);
@@ -122,7 +144,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
     deleteReservation: (id) => {
       setReservations((prev) => prev.filter(r => r.id !== id));
     },
-  }), [userEmail, users, reservations]);
+  }), [userEmail, users, reservations, reservationLabels]);
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 }

@@ -20,6 +20,7 @@ function MainLayout() {
   const navItems = [
     { label: '회의실 예약', path: '/timetable' },
     { label: '회의록 작성', path: '/minutes' },
+    { label: '회의록 Wiki', path: '/minutes-wiki' },
   ];
 
   return (

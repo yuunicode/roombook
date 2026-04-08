@@ -1,173 +1,210 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { format } from 'date-fns';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAppState } from '../stores';
-import { AppIcon } from '../components';
-
-type TranscriptItem = {
-  id: string;
-  speaker: string;
-  text: string;
-  time: string;
-};
 
 function MinutesPage() {
-  const { isLoggedIn } = useAppState();
-  const [isRecording, setIsRecording] = useState(false);
-  const [hasRecorded, setHasRecorded] = useState(false);
-  const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
+  const navigate = useNavigate();
+  const { reservationId } = useParams<{ reservationId: string }>();
+  const { isLoggedIn, reservations, reservationLabels, updateReservation } = useAppState();
+
+  const reservation = useMemo(
+    () => (reservationId ? reservations.find((item) => item.id === reservationId) ?? null : null),
+    [reservationId, reservations]
+  );
+
+  const [selectedLabel, setSelectedLabel] = useState('');
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [dateInput, setDateInput] = useState('');
+  const [startTimeInput, setStartTimeInput] = useState('');
+  const [endTimeInput, setEndTimeInput] = useState('');
+  const [externalAttendees, setExternalAttendees] = useState('');
+  const [agenda, setAgenda] = useState('');
+  const [meetingContent, setMeetingContent] = useState('');
+  const [meetingResult, setMeetingResult] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
+  const agendaRef = useRef<HTMLTextAreaElement>(null);
+  const meetingContentRef = useRef<HTMLTextAreaElement>(null);
+  const meetingResultRef = useRef<HTMLTextAreaElement>(null);
 
-  // 자동 스크롤
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [transcripts]);
-
-  // STT 시뮬레이션 로직 (백엔드 연결 전 프론트엔드 목업)
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | undefined;
-    if (isRecording) {
-      const mockTexts = [
-        "안녕하세요, 오늘 프로젝트 일정 논의 시작하겠습니다.",
-        "네, 현재 1단계 개발은 완료된 상태입니다.",
-        "다음 주까지 디자인 시스템 가이드 보완이 필요할 것 같아요.",
-        "예약 시스템의 버그 수정 건은 어떻게 진행되고 있나요?",
-        "그 부분은 오늘 오후 중에 마무리될 예정입니다."
-      ];
-      let i = 0;
-      interval = setInterval(() => {
-        if (i < mockTexts.length) {
-          const newItem: TranscriptItem = {
-            id: String(Date.now()),
-            speaker: i % 2 === 0 ? "나" : "동료",
-            text: mockTexts[i],
-            time: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-          };
-          setTranscripts(prev => [...prev, newItem]);
-          i++;
-        }
-      }, 2000);
-    }
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [isRecording]);
-
-  const handleStartRecording = () => {
-    setTranscripts([]);
-    setIsRecording(true);
-    setHasRecorded(false);
+  const resizeTextarea = (element: HTMLTextAreaElement | null) => {
+    if (!element) return;
+    element.style.height = 'auto';
+    element.style.height = `${element.scrollHeight}px`;
   };
 
-  const handleStopRecording = () => {
-    setIsRecording(false);
-    setHasRecorded(true);
-  };
+  useEffect(() => {
+    if (!reservation) {
+      return;
+    }
+    setSelectedLabel(reservation.label ?? reservationLabels[0] ?? '');
+    setTitle(reservation.title ?? '');
+    setDateInput(format(reservation.start, 'yyyy-MM-dd'));
+    setStartTimeInput(format(reservation.start, 'HH:mm'));
+    setEndTimeInput(format(reservation.end, 'HH:mm'));
+    setExternalAttendees(reservation.externalAttendees ?? '');
+    setAgenda(reservation.agenda ?? '');
+    setMeetingContent(reservation.meetingContent ?? '');
+    setMeetingResult(reservation.meetingResult ?? '');
+    setSaveMessage('');
+  }, [reservation, reservationLabels]);
 
-  const handleConvert = () => {
-    if (transcripts.length === 0) return;
-    
-    // 시뮬레이션: STT 내용을 기반으로 요약본 생성
-    const summary = transcripts.map(t => `- [${t.speaker}] ${t.text}`).join('\n');
-    setTitle(`${new Date().toLocaleDateString()} 회의록 (자동 생성됨)`);
-    setContent(`[회의 요약]\n${summary}\n\n[결정 사항]\n- 프로젝트 일정 준수 확인\n- 디자인 시스템 보완 필요`);
+  useEffect(() => {
+    if (!isLoggedIn) {
+      navigate('/login');
+    }
+  }, [isLoggedIn, navigate]);
+
+  useEffect(() => {
+    resizeTextarea(agendaRef.current);
+  }, [agenda]);
+
+  useEffect(() => {
+    resizeTextarea(meetingContentRef.current);
+  }, [meetingContent]);
+
+  useEffect(() => {
+    resizeTextarea(meetingResultRef.current);
+  }, [meetingResult]);
+
+  const internalAttendeeText = reservation?.attendees.map((attendee) => attendee.name).join(', ') ?? '';
+
+  const handleSave = () => {
+    if (!reservation) {
+      return;
+    }
+    if (!title.trim() || !dateInput || !startTimeInput || !endTimeInput) {
+      setSaveMessage('필수 항목을 먼저 입력하세요.');
+      return;
+    }
+
+    const nextStart = new Date(`${dateInput}T${startTimeInput}`);
+    const nextEnd = new Date(`${dateInput}T${endTimeInput}`);
+
+    if (Number.isNaN(nextStart.getTime()) || Number.isNaN(nextEnd.getTime())) {
+      setSaveMessage('날짜 또는 시간 형식이 올바르지 않습니다.');
+      return;
+    }
+    if (nextEnd <= nextStart) {
+      setSaveMessage('종료 시간은 시작 시간보다 늦어야 합니다.');
+      return;
+    }
+
+    updateReservation(reservation.id, {
+      title: title.trim(),
+      label: selectedLabel,
+      start: nextStart,
+      end: nextEnd,
+      attendees: reservation.attendees,
+      externalAttendees: externalAttendees.trim(),
+      agenda: agenda.trim(),
+      meetingContent: meetingContent.trim(),
+      meetingResult: meetingResult.trim(),
+      minutesAttachment: reservation.minutesAttachment,
+    });
+    setSaveMessage('저장되었습니다.');
   };
 
   if (!isLoggedIn) {
+    return null;
+  }
+
+  if (!reservationId) {
     return (
       <div className="empty-page-state">
-        <h2 className="page-title">로그인이 필요합니다</h2>
-        <p className="page-subtitle">회의록 작성을 위해 먼저 로그인해 주세요.</p>
+        <h2 className="page-title">회의록을 연결할 예약을 선택하세요</h2>
+        <p className="page-subtitle">예약 카드의 [회의록 작성] 버튼으로 이동하면 자동 연동됩니다.</p>
+      </div>
+    );
+  }
+
+  if (!reservation) {
+    return (
+      <div className="empty-page-state">
+        <h2 className="page-title">예약 정보를 찾을 수 없습니다</h2>
+        <p className="page-subtitle">삭제되었거나 잘못된 접근입니다.</p>
       </div>
     );
   }
 
   return (
-    <div className="minutes-container">
-      {/* 왼쪽: STT 전사 영역 */}
-      <section className="minutes-stt-section">
-        <header className="stt-header">
-          <div className="stt-status">
-            <div className={`status-dot ${isRecording ? 'recording' : ''}`} />
-            <span className="status-text">{isRecording ? 'GPT-4o-mini-transcribe 분석 중...' : '준비 완료'}</span>
-          </div>
-          <h2 className="section-small-title">Real-time Transcript</h2>
-        </header>
-
-        <div className="stt-transcript-area" ref={scrollRef}>
-          {transcripts.length === 0 ? (
-            <div className="stt-empty">
-              <AppIcon name="room" style={{ width: '32px', opacity: 0.2, marginBottom: '12px' }} />
-              <p>녹음 시작 버튼을 눌러 회의를 기록하세요.</p>
-            </div>
-          ) : (
-            transcripts.map(item => (
-              <div key={item.id} className={`transcript-bubble ${item.speaker === '나' ? 'me' : 'other'}`}>
-                <span className="bubble-speaker">{item.speaker}</span>
-                <p className="bubble-text">{item.text}</p>
-                <span className="bubble-time">{item.time}</span>
-              </div>
-            ))
-          )}
+    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '24px 0 40px' }}>
+      <section style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', gap: '12px' }}>
+          <h1 className="page-title" style={{ fontSize: '24px', margin: 0 }}>회의록 작성</h1>
+          <button className="nav-menu-item" type="button" onClick={() => navigate('/timetable')}>예약으로 돌아가기</button>
         </div>
 
-        <footer className="stt-controls">
-          {!isRecording ? (
-            <button className="linear-primary-button record-start" onClick={handleStartRecording}>
-              <div className="record-icon" />
-              녹음 시작
-            </button>
-          ) : (
-            <button className="linear-primary-button record-stop" onClick={handleStopRecording}>
-              <div className="stop-icon" />
-              녹음 종료
-            </button>
-          )}
-          
-          {hasRecorded && (
-            <button className="linear-primary-button convert-button" onClick={handleConvert}>
-              <AppIcon name="calendar" style={{ width: '14px' }} />
-              Convert to Minutes
-            </button>
-          )}
-        </footer>
+        <div className="status-info-group" style={{ marginBottom: '16px' }}>
+          <label className="status-info-label">라벨</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {reservationLabels.map((label) => (
+              <button
+                key={label}
+                type="button"
+                className="room-capacity-tag"
+                style={{
+                  background: selectedLabel === label ? 'rgba(94, 106, 210, 0.12)' : undefined,
+                  color: selectedLabel === label ? 'var(--accent)' : undefined,
+                }}
+                onClick={() => setSelectedLabel(label)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="status-info-group" style={{ marginBottom: '16px' }}>
+          <label className="status-info-label">회의 제목</label>
+          <input className="linear-input" value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+          <div className="status-info-group">
+            <label className="status-info-label">날짜</label>
+            <input className="linear-input" type="date" value={dateInput} onChange={(e) => setDateInput(e.target.value)} />
+          </div>
+          <div className="status-info-group">
+            <label className="status-info-label">시작 시간</label>
+            <input className="linear-input" type="time" value={startTimeInput} onChange={(e) => setStartTimeInput(e.target.value)} />
+          </div>
+          <div className="status-info-group">
+            <label className="status-info-label">종료 시간</label>
+            <input className="linear-input" type="time" value={endTimeInput} onChange={(e) => setEndTimeInput(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="status-info-group" style={{ marginBottom: '16px' }}>
+          <label className="status-info-label">내부 참석자</label>
+          <p className="status-info-value">{internalAttendeeText || '없음'}</p>
+        </div>
+
+        <div className="status-info-group" style={{ marginBottom: '8px' }}>
+          <label className="status-info-label">외부 참석자</label>
+          <input className="linear-input" value={externalAttendees} onChange={(e) => setExternalAttendees(e.target.value)} />
+        </div>
       </section>
 
-      {/* 오른쪽: 회의록 편집 영역 */}
-      <section className="minutes-edit-section">
-        <header className="page-header-content" style={{ textAlign: 'left', marginBottom: '24px' }}>
-          <h1 className="page-title" style={{ fontSize: '24px' }}>Meeting Minutes</h1>
-          <p className="page-subtitle">작성된 내용을 확인하고 저장하세요.</p>
-        </header>
+      <section style={{ background: '#ffffff', border: '1px solid var(--border)', borderRadius: '12px', padding: '20px', marginTop: '16px' }}>
+        <div className="status-info-group" style={{ marginBottom: '14px' }}>
+          <label className="status-info-label">주요 안건</label>
+          <textarea ref={agendaRef} className="minutes-textarea" style={{ minHeight: '120px', padding: '12px', fontSize: '14px', resize: 'none', overflow: 'hidden' }} value={agenda} onChange={(e) => setAgenda(e.target.value)} />
+        </div>
+        <div className="status-info-group" style={{ marginBottom: '14px' }}>
+          <label className="status-info-label">회의 내용</label>
+          <textarea ref={meetingContentRef} className="minutes-textarea" style={{ minHeight: '160px', padding: '12px', fontSize: '14px', resize: 'none', overflow: 'hidden' }} value={meetingContent} onChange={(e) => setMeetingContent(e.target.value)} />
+        </div>
+        <div className="status-info-group">
+          <label className="status-info-label">회의 결과</label>
+          <textarea ref={meetingResultRef} className="minutes-textarea" style={{ minHeight: '120px', padding: '12px', fontSize: '14px', resize: 'none', overflow: 'hidden' }} value={meetingResult} onChange={(e) => setMeetingResult(e.target.value)} />
+        </div>
 
-        <div className="minutes-form-container">
-          <div className="linear-form-group">
-            <label className="linear-label">제목</label>
-            <input 
-              className="linear-input" 
-              placeholder="회의 제목을 입력하세요"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
-
-          <div className="linear-form-group">
-            <label className="linear-label">본문</label>
-            <textarea 
-              className="minutes-textarea" 
-              placeholder="내용을 입력하거나 Convert 버튼을 눌러보세요..."
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-            />
-          </div>
-
-          <div className="form-actions">
-            <button className="linear-primary-button save-button">저장하기</button>
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
+          <p className="status-info-value" style={{ color: saveMessage === '저장되었습니다.' ? '#18794e' : '#d92d20' }}>{saveMessage}</p>
+          <button className="linear-primary-button" type="button" style={{ width: 'auto', padding: '0 24px' }} onClick={handleSave}>
+            저장하기
+          </button>
         </div>
       </section>
     </div>

@@ -26,10 +26,14 @@ const localizer = dateFnsLocalizer({
 export type TimetableReservation = CalendarEvent & {
   id: string;
   title: string;
+  label: string;
   start: Date;
   end: Date;
   attendees: AppUser[];
+  externalAttendees: string;
   agenda: string;
+  meetingContent: string;
+  meetingResult: string;
   minutesAttachment: string;
   creatorEmail: string;
 };
