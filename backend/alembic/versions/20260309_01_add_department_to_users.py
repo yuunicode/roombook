@@ -26,9 +26,7 @@ def upgrade() -> None:
     )
     # Set default department for ALL existing users to avoid NOT NULL violation
     connection = op.get_bind()
-    connection.execute(
-        sa.text("UPDATE users SET department = '미지정' WHERE department IS NULL")
-    )
+    connection.execute(sa.text("UPDATE users SET department = '미지정' WHERE department IS NULL"))
     # Make department non-nullable
     op.alter_column(
         "users",

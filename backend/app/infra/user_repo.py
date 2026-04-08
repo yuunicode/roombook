@@ -31,9 +31,7 @@ async def search_users_by_query(db: AsyncSession, q: str, limit: int) -> list[tu
 
 
 async def list_users(db: AsyncSession) -> list[tuple[str, str, str, str]]:
-    rows = await db.execute(
-        select(User.id, User.name, User.email, User.department).order_by(User.name.asc())
-    )
+    rows = await db.execute(select(User.id, User.name, User.email, User.department).order_by(User.name.asc()))
     return list(rows.tuples().all())
 
 
