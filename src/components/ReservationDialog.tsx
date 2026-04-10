@@ -91,11 +91,22 @@ function ReservationDialog({
   const filteredUsers = useMemo(() => {
     const keyword = attendeeQuery.trim().toLowerCase();
     if (!keyword) return [];
-    return users.filter(
-      (u) =>
-        !selectedAttendees.some((a) => a.id === u.id) &&
-        (u.name.toLowerCase().includes(keyword) || u.email.toLowerCase().includes(keyword))
+
+    const candidates = users.filter(
+      (user) => !selectedAttendees.some((attendee) => attendee.id === user.id)
     );
+
+    const startsWithName = candidates.filter((user) => user.name.toLowerCase().startsWith(keyword));
+    const includesName = candidates.filter(
+      (user) =>
+        !user.name.toLowerCase().startsWith(keyword) && user.name.toLowerCase().includes(keyword)
+    );
+    const includesEmail = candidates.filter(
+      (user) =>
+        !user.name.toLowerCase().includes(keyword) && user.email.toLowerCase().includes(keyword)
+    );
+
+    return [...startsWithName, ...includesName, ...includesEmail].slice(0, 6);
   }, [attendeeQuery, selectedAttendees, users]);
 
   const handleConfirm = () => {
@@ -328,14 +339,7 @@ function ReservationDialog({
 
             <div className="status-info-group">
               <label className="status-info-label">내부 참석자</label>
-              <input
-                className="linear-input"
-                style={{ marginBottom: '8px' }}
-                value={attendeeQuery}
-                placeholder="이름 또는 이메일 검색..."
-                onChange={(e) => setAttendeeQuery(e.target.value)}
-              />
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              <div className="attendee-token-input">
                 {selectedAttendees.map((a) => (
                   <span
                     key={a.id}
@@ -348,6 +352,12 @@ function ReservationDialog({
                     {a.name} ✕
                   </span>
                 ))}
+                <input
+                  className="attendee-token-field"
+                  value={attendeeQuery}
+                  placeholder={selectedAttendees.length === 0 ? '이름 입력...' : ''}
+                  onChange={(e) => setAttendeeQuery(e.target.value)}
+                />
               </div>
               {filteredUsers.length > 0 && (
                 <div

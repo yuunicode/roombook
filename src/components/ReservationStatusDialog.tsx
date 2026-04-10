@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import type { AppUser } from '../stores';
 import Dialog from './ui/Dialog';
@@ -25,6 +26,7 @@ type ReservationStatus = {
   start: Date;
   end: Date;
   creatorEmail: string;
+  creatorName?: string;
 };
 
 type ReservationStatusDialogProps = {
@@ -33,7 +35,10 @@ type ReservationStatusDialogProps = {
   users: AppUser[];
   labelOptions: string[];
   onClose: () => void;
-  onSave: (reservationId: string, payload: Omit<ReservationStatus, 'id' | 'creatorEmail'>) => void;
+  onSave: (
+    reservationId: string,
+    payload: Omit<ReservationStatus, 'id' | 'creatorEmail' | 'creatorName'>
+  ) => void;
   onDelete: (reservationId: string) => void;
 };
 
@@ -54,6 +59,9 @@ function ReservationStatusDialog({
   const [attendeeQuery, setAttendeeQuery] = useState('');
   const [selectedAttendees, setSelectedAttendees] = useState<AppUser[]>([]);
   const [externalAttendees, setExternalAttendees] = useState('');
+  const [dateInput, setDateInput] = useState('');
+  const [startTimeInput, setStartTimeInput] = useState('');
+  const [endTimeInput, setEndTimeInput] = useState('');
 
   useEffect(() => {
     if (!reservation) return;
@@ -63,22 +71,46 @@ function ReservationStatusDialog({
     setSelectedAttendees(reservation.attendees ?? []);
     setExternalAttendees(reservation.externalAttendees ?? '');
     setAgenda(reservation.agenda ?? '');
+    setDateInput(format(reservation.start, 'yyyy-MM-dd'));
+    setStartTimeInput(format(reservation.start, 'HH:mm'));
+    setEndTimeInput(format(reservation.end, 'HH:mm'));
   }, [reservation, isOpen]);
 
   const filteredUsers = useMemo(() => {
     const keyword = attendeeQuery.trim().toLowerCase();
     if (!keyword) return [];
-    return users.filter(
-      (u) =>
-        !selectedAttendees.some((a) => a.id === u.id) &&
-        (u.name.toLowerCase().includes(keyword) || u.email.toLowerCase().includes(keyword))
+
+    const candidates = users.filter(
+      (user) => !selectedAttendees.some((attendee) => attendee.id === user.id)
     );
+
+    const startsWithName = candidates.filter((user) => user.name.toLowerCase().startsWith(keyword));
+    const includesName = candidates.filter(
+      (user) =>
+        !user.name.toLowerCase().startsWith(keyword) && user.name.toLowerCase().includes(keyword)
+    );
+    const includesEmail = candidates.filter(
+      (user) =>
+        !user.name.toLowerCase().includes(keyword) && user.email.toLowerCase().includes(keyword)
+    );
+
+    return [...startsWithName, ...includesName, ...includesEmail].slice(0, 6);
   }, [attendeeQuery, selectedAttendees, users]);
 
   if (!reservation) return null;
 
   const handleSave = () => {
     if (!title.trim()) return;
+    const nextStart = new Date(`${dateInput}T${startTimeInput}`);
+    const nextEnd = new Date(`${dateInput}T${endTimeInput}`);
+    if (
+      Number.isNaN(nextStart.getTime()) ||
+      Number.isNaN(nextEnd.getTime()) ||
+      nextEnd <= nextStart
+    ) {
+      alert('날짜/시간이 올바르지 않습니다.');
+      return;
+    }
     onSave(reservation.id, {
       title: title.trim(),
       label: selectedLabel,
@@ -88,8 +120,8 @@ function ReservationStatusDialog({
       meetingContent: reservation.meetingContent,
       meetingResult: reservation.meetingResult,
       minutesAttachment: reservation.minutesAttachment,
-      start: reservation.start,
-      end: reservation.end,
+      start: nextStart,
+      end: nextEnd,
     });
     setIsEditing(false);
   };
@@ -247,15 +279,37 @@ function ReservationStatusDialog({
               </div>
             </div>
             <div className="status-info-group">
+              <label className="status-info-label">일정 시간</label>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                  gap: '8px',
+                }}
+              >
+                <input
+                  className="linear-input"
+                  type="date"
+                  value={dateInput}
+                  onChange={(e) => setDateInput(e.target.value)}
+                />
+                <input
+                  className="linear-input"
+                  type="time"
+                  value={startTimeInput}
+                  onChange={(e) => setStartTimeInput(e.target.value)}
+                />
+                <input
+                  className="linear-input"
+                  type="time"
+                  value={endTimeInput}
+                  onChange={(e) => setEndTimeInput(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="status-info-group">
               <label className="status-info-label">내부 참석자</label>
-              <input
-                className="linear-input"
-                style={{ marginBottom: '8px' }}
-                value={attendeeQuery}
-                placeholder="참석자 추가..."
-                onChange={(e) => setAttendeeQuery(e.target.value)}
-              />
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              <div className="attendee-token-input">
                 {selectedAttendees.map((a) => (
                   <span
                     key={a.id}
@@ -268,6 +322,12 @@ function ReservationStatusDialog({
                     {a.name} ✕
                   </span>
                 ))}
+                <input
+                  className="attendee-token-field"
+                  value={attendeeQuery}
+                  placeholder={selectedAttendees.length === 0 ? '이름 입력...' : ''}
+                  onChange={(e) => setAttendeeQuery(e.target.value)}
+                />
               </div>
               {filteredUsers.length > 0 && (
                 <div
@@ -326,7 +386,7 @@ function ReservationStatusDialog({
             <div className="status-info-group">
               <span className="status-info-label">예약자</span>
               <span className="status-info-value" style={{ fontWeight: 600 }}>
-                {reservation.creatorEmail.split('@')[0]}
+                {reservation.creatorName || reservation.creatorEmail.split('@')[0]}
               </span>
             </div>
             <div className="status-info-group">
@@ -365,6 +425,9 @@ function ReservationStatusDialog({
           </button>
         ) : (
           <>
+            <button className="nav-menu-item" onClick={() => setIsEditing(true)}>
+              예약 수정
+            </button>
             <button
               className="nav-menu-item"
               style={{ color: '#e5484d' }}

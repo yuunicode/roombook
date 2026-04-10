@@ -4,8 +4,11 @@ import { AppIcon } from '../components';
 
 function DashboardPage() {
   const navigate = useNavigate();
-  const { isLoggedIn, userEmail, reservations } = useAppState();
-  const displayName = isLoggedIn ? userEmail.split('@')[0] : '';
+  const { isLoggedIn, userEmail, users, reservations } = useAppState();
+  const displayName = isLoggedIn
+    ? (users.find((user) => user.email.toLowerCase() === userEmail.toLowerCase())?.name ??
+      userEmail.split('@')[0])
+    : '';
 
   const myUpcomingMeetings = reservations
     .filter((r) => r.attendees.some((a) => a.email.toLowerCase() === userEmail.toLowerCase()))
@@ -55,37 +58,35 @@ function DashboardPage() {
         >
           내 다가오는 일정
         </h3>
-        <div className="dashboard-mini-list">
+        <div className="dashboard-upcoming-row">
           {myUpcomingMeetings.length > 0 ? (
             myUpcomingMeetings.map((meeting) => (
-              <div key={meeting.id} className="mini-item">
-                <div
-                  className="mini-time"
-                  style={{
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    color: 'var(--text-muted)',
-                    width: '60px',
-                  }}
-                >
+              <button
+                key={meeting.id}
+                className="upcoming-item-card dashboard-upcoming-card"
+                onClick={() => navigate('/timetable')}
+              >
+                <p className="upcoming-item-label">{meeting.label || '-'}</p>
+                <p className="upcoming-item-time">
+                  {meeting.start.toLocaleDateString('ko-KR', {
+                    month: '2-digit',
+                    day: '2-digit',
+                    weekday: 'short',
+                  })}
+                  ,{' '}
                   {meeting.start.toLocaleTimeString('ko-KR', {
                     hour: '2-digit',
                     minute: '2-digit',
                     hour12: false,
                   })}
-                </div>
-                <div className="mini-content">
-                  <p
-                    className="mini-title"
-                    style={{ fontSize: '14px', fontWeight: 600, marginBottom: '2px' }}
-                  >
-                    {meeting.title}
-                  </p>
-                  <p className="mini-meta" style={{ fontSize: '12px', color: 'var(--text-soft)' }}>
-                    {meeting.room} · {meeting.attendees.length}명 참석
-                  </p>
-                </div>
-              </div>
+                  {' · '}
+                  {meeting.roomName}
+                </p>
+                <p className="upcoming-item-title">{meeting.title}</p>
+                <p className="upcoming-item-attendees">
+                  {meeting.attendees.map((attendee) => attendee.name).join(', ') || '참석자 없음'}
+                </p>
+              </button>
             ))
           ) : (
             <p className="upcoming-empty">예정된 회의가 없습니다.</p>

@@ -31,31 +31,49 @@ function TimetablePage() {
     userEmail,
     isLoggedIn,
     users,
+    rooms,
     reservations,
     reservationLabels,
     addReservation,
     updateReservation,
     deleteReservation,
   } = useAppState();
-  
+
   const [calendarMode, setCalendarMode] = useState<'weekly' | 'monthly'>('weekly');
   const [calendarDate, setCalendarDate] = useState(new Date());
-  const [selectedRoom, setSelectedRoom] = useState<string>('room-a');
+  const [selectedRoom, setSelectedRoom] = useState<string>('A');
   const [isReservationOpen, setIsReservationOpen] = useState(false);
   const [isReservationStatusOpen, setIsReservationStatusOpen] = useState(false);
-  const [reservationStart, setReservationStart] = useState<Date>(roundToNearestHalfHour(new Date()));
-  const [reservationEnd, setReservationEnd] = useState<Date>(new Date(roundToNearestHalfHour(new Date()).getTime() + 60 * 60 * 1000));
+  const [reservationStart, setReservationStart] = useState<Date>(
+    roundToNearestHalfHour(new Date())
+  );
+  const [reservationEnd, setReservationEnd] = useState<Date>(
+    new Date(roundToNearestHalfHour(new Date()).getTime() + 60 * 60 * 1000)
+  );
   const [selectedReservationId, setSelectedReservationId] = useState<string | null>(null);
 
-  const roomOptions = [
-    { id: 'room-a', name: '회의실', capacity: '30명', icon: 'room' as const },
-    { id: 'room-b', name: '회의테이블', capacity: '6명', icon: 'room' as const },
-  ];
+  const roomOptions = rooms.map((room) => ({
+    id: room.id,
+    name: room.name,
+    capacity: `${room.capacity}명`,
+    icon: 'room' as const,
+  }));
 
-  const currentRoomId = roomOptions.some((room) => room.id === selectedRoom) ? selectedRoom : roomOptions[0].id;
-  const visibleReservations = reservations.filter((item) => item.room === currentRoomId);
-  const currentUser = useMemo(() => users.find((user) => user.email.toLowerCase() === userEmail.toLowerCase()) ?? null, [users, userEmail]);
-  const selectedReservation = useMemo(() => selectedReservationId ? reservations.find((item) => item.id === selectedReservationId) ?? null : null, [reservations, selectedReservationId]);
+  const currentRoomId = roomOptions.some((room) => room.id === selectedRoom)
+    ? selectedRoom
+    : roomOptions[0]?.id;
+  const visibleReservations = reservations.filter((item) => item.roomId === currentRoomId);
+  const currentUser = useMemo(
+    () => users.find((user) => user.email.toLowerCase() === userEmail.toLowerCase()) ?? null,
+    [users, userEmail]
+  );
+  const selectedReservation = useMemo(
+    () =>
+      selectedReservationId
+        ? (reservations.find((item) => item.id === selectedReservationId) ?? null)
+        : null,
+    [reservations, selectedReservationId]
+  );
 
   const upcomingEvents = useMemo(() => {
     if (!isLoggedIn) return [];
@@ -66,7 +84,11 @@ function TimetablePage() {
     return reservations
       .filter((item) => {
         const itemStart = new Date(item.start);
-        return itemStart >= start && itemStart < end && item.attendees.some(a => a.email.toLowerCase() === userEmail.toLowerCase());
+        return (
+          itemStart >= start &&
+          itemStart < end &&
+          item.attendees.some((a) => a.email.toLowerCase() === userEmail.toLowerCase())
+        );
       })
       .sort((a, b) => a.start.getTime() - b.start.getTime());
   }, [isLoggedIn, reservations, userEmail]);
@@ -91,7 +113,12 @@ function TimetablePage() {
   };
 
   const handleConfirmReservation = (draft: ReservationDraft) => {
-    if (reservations.some(r => r.room === currentRoomId && rangesOverlap(r.start, r.end, draft.start, draft.end))) {
+    if (!currentRoomId) return;
+    if (
+      reservations.some(
+        (r) => r.roomId === currentRoomId && rangesOverlap(r.start, r.end, draft.start, draft.end)
+      )
+    ) {
       alert('중복된 예약이 있습니다.');
       return;
     }
@@ -114,7 +141,11 @@ function TimetablePage() {
               <h3 className="sidebar-card-title">Spaces</h3>
             </div>
             {roomOptions.map((room) => (
-              <button key={room.id} className={`room-button ${currentRoomId === room.id ? 'active' : ''}`} onClick={() => setSelectedRoom(room.id)}>
+              <button
+                key={room.id}
+                className={`room-button ${currentRoomId === room.id ? 'active' : ''}`}
+                onClick={() => setSelectedRoom(room.id)}
+              >
                 <div className="room-button-content">
                   <div className="room-button-main">
                     <AppIcon name={room.icon} className="room-button-icon" />
@@ -133,10 +164,32 @@ function TimetablePage() {
             </div>
             {upcomingEvents.length > 0 ? (
               <div className="upcoming-list">
-                {upcomingEvents.map(event => (
-                  <button key={event.id} className="upcoming-item" onClick={() => handleOpenReservationStatus(event)}>
+                {upcomingEvents.map((event) => (
+                  <button
+                    key={event.id}
+                    className="upcoming-item-card"
+                    onClick={() => handleOpenReservationStatus(event)}
+                  >
+                    <p className="upcoming-item-label">{event.label || '-'}</p>
+                    <p className="upcoming-item-time">
+                      {event.start.toLocaleDateString('ko-KR', {
+                        month: '2-digit',
+                        day: '2-digit',
+                        weekday: 'short',
+                      })}
+                      ,{' '}
+                      {event.start.toLocaleTimeString('ko-KR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false,
+                      })}
+                      {' · '}
+                      {event.roomName}
+                    </p>
                     <p className="upcoming-item-title">{event.title}</p>
-                    <p className="upcoming-item-meta">{event.start.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit', weekday: 'short' })} {event.start.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}</p>
+                    <p className="upcoming-item-attendees">
+                      {event.attendees.map((attendee) => attendee.name).join(', ') || '참석자 없음'}
+                    </p>
                   </button>
                 ))}
               </div>
@@ -149,26 +202,85 @@ function TimetablePage() {
         <section className="timetable-main">
           <div className="calendar-control-row">
             <div className="page-view-toggle">
-              <button className={`page-mode-button ${calendarMode === 'weekly' ? 'active' : ''}`} onClick={() => setCalendarMode('weekly')}>Weekly</button>
-              <button className={`page-mode-button ${calendarMode === 'monthly' ? 'active' : ''}`} onClick={() => setCalendarMode('monthly')}>Monthly</button>
+              <button
+                className={`page-mode-button ${calendarMode === 'weekly' ? 'active' : ''}`}
+                onClick={() => setCalendarMode('weekly')}
+              >
+                Weekly
+              </button>
+              <button
+                className={`page-mode-button ${calendarMode === 'monthly' ? 'active' : ''}`}
+                onClick={() => setCalendarMode('monthly')}
+              >
+                Monthly
+              </button>
             </div>
             <div className="page-nav-only">
-              <button className="page-nav-button" onClick={() => setCalendarDate(new Date())}>오늘</button>
-              <button className="page-nav-button" onClick={() => setCalendarDate(prev => calendarMode === 'weekly' ? addWeeks(prev, -1) : addMonths(prev, -1))}>‹</button>
-              <button className="page-nav-button" onClick={() => setCalendarDate(prev => calendarMode === 'weekly' ? addWeeks(prev, 1) : addMonths(prev, 1))}>›</button>
+              <button className="page-nav-button" onClick={() => setCalendarDate(new Date())}>
+                오늘
+              </button>
+              <button
+                className="page-nav-button"
+                onClick={() =>
+                  setCalendarDate((prev) =>
+                    calendarMode === 'weekly' ? addWeeks(prev, -1) : addMonths(prev, -1)
+                  )
+                }
+              >
+                ‹
+              </button>
+              <button
+                className="page-nav-button"
+                onClick={() =>
+                  setCalendarDate((prev) =>
+                    calendarMode === 'weekly' ? addWeeks(prev, 1) : addMonths(prev, 1)
+                  )
+                }
+              >
+                ›
+              </button>
             </div>
           </div>
 
           {calendarMode === 'weekly' ? (
-            <WeeklyTimetable reservations={visibleReservations} currentDate={calendarDate} onNavigate={setCalendarDate} onSelectSlot={handleOpenReservationFromGrid} onSelectReservation={handleOpenReservationStatus} />
+            <WeeklyTimetable
+              reservations={visibleReservations}
+              currentDate={calendarDate}
+              onNavigate={setCalendarDate}
+              onSelectSlot={handleOpenReservationFromGrid}
+              onSelectReservation={handleOpenReservationStatus}
+            />
           ) : (
-            <MonthlyTimetable reservations={visibleReservations} currentDate={calendarDate} onNavigate={setCalendarDate} onSelectSlot={handleOpenReservationFromGrid} onSelectReservation={handleOpenReservationStatus} />
+            <MonthlyTimetable
+              reservations={visibleReservations}
+              currentDate={calendarDate}
+              onNavigate={setCalendarDate}
+              onSelectSlot={handleOpenReservationFromGrid}
+              onSelectReservation={handleOpenReservationStatus}
+            />
           )}
         </section>
       </section>
 
-      <ReservationDialog isOpen={isReservationOpen} initialStart={reservationStart} initialEnd={reservationEnd} currentUser={currentUser} users={users} labelOptions={reservationLabels} onClose={() => setIsReservationOpen(false)} onConfirm={handleConfirmReservation} />
-      <ReservationStatusDialog isOpen={isReservationStatusOpen} reservation={selectedReservation} users={users} labelOptions={reservationLabels} onClose={() => setIsReservationStatusOpen(false)} onSave={updateReservation} onDelete={deleteReservation} />
+      <ReservationDialog
+        isOpen={isReservationOpen}
+        initialStart={reservationStart}
+        initialEnd={reservationEnd}
+        currentUser={currentUser}
+        users={users}
+        labelOptions={reservationLabels}
+        onClose={() => setIsReservationOpen(false)}
+        onConfirm={handleConfirmReservation}
+      />
+      <ReservationStatusDialog
+        isOpen={isReservationStatusOpen}
+        reservation={selectedReservation}
+        users={users}
+        labelOptions={reservationLabels}
+        onClose={() => setIsReservationStatusOpen(false)}
+        onSave={updateReservation}
+        onDelete={deleteReservation}
+      />
     </div>
   );
 }

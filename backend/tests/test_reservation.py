@@ -29,7 +29,7 @@ def test_should_create_and_return_attendees_in_reservation_detail(client: TestCl
     payload = detail_response.json()
     assert payload["purpose"] == "주간 목표 정렬"
     assert payload["agenda_url"] == "https://example.com/agenda/1"
-    assert payload["room_name"] == "대회의실"
+    assert payload["room_name"] == "회의실"
     assert len(payload["attendees"]) == 1
     assert payload["attendees"][0]["email"] == "user@ecminer.com"
 

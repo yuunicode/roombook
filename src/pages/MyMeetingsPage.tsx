@@ -31,9 +31,7 @@ function MyMeetingsPage() {
           </span>
           <div className="page-title-copy">
             <h1 className="section-title">마이페이지</h1>
-            <p className="meeting-meta">
-              내가 만든 회의이거나 참석자로 포함된 회의만 표시합니다.
-            </p>
+            <p className="meeting-meta">내가 만든 회의이거나 참석자로 포함된 회의만 표시합니다.</p>
           </div>
         </div>
         <button className="secondary-button" type="button" onClick={() => navigate('/')}>
@@ -75,8 +73,8 @@ function MyMeetingsPage() {
                   hour12: false,
                 })}
               </p>
-              <p className="meeting-meta">회의실: {meeting.room}</p>
-              <p className="meeting-meta">예약자: {meeting.creatorEmail}</p>
+              <p className="meeting-meta">회의실: {meeting.roomName}</p>
+              <p className="meeting-meta">예약자: {meeting.creatorName || meeting.creatorEmail}</p>
               <p className="meeting-meta">
                 참석자: {meeting.attendees.map((attendee) => attendee.name).join(', ') || '없음'}
               </p>

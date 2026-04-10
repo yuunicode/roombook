@@ -68,3 +68,29 @@
 1. WebSocket/SSE로 잠금 상태와 회의록 변경 실시간 반영
 2. 잠금 실패/세션 만료 에러를 사용자 안내 토스트로 세분화
 3. 로컬스토리지 세션 의존 제거 후 `/api/auth/me` 기반 세션 복원
+
+---
+
+## 추가 작업 로그 (2026-04-09)
+
+1. 회의 공간 DB 테이블 추가
+- `rooms` 테이블 신설
+  - `id` (`A`, `B`)
+  - `name` (`회의실`, `회의테이블`)
+  - `capacity`
+  - `updated_at`
+- 마이그레이션: `backend/alembic/versions/20260409_01_add_rooms_table.py`
+
+2. 회의 공간 API 추가
+- `GET /api/rooms` 추가 (인증 필요)
+- 프론트 `spaces` 목록이 하드코딩이 아니라 DB 데이터를 사용하도록 변경
+
+3. 예약/목록 반영 기준 통일
+- 예약 데이터의 `room_id`, `room_name`을 그대로 사용
+- `내 예약카드`, `Up next`, `내 다가오는 일정`, `회의록 Wiki`의 회의실 표시가 DB 기준 이름으로 동기화
+- 프론트의 기존 `room-a ↔ A` 변환 로직 제거
+
+4. 회의록 페이지 API 동기화 강화
+- 회의록 페이지 진입 시 `GET /api/reservations/{id}/minutes`로 최신 데이터를 직접 조회
+- 저장은 `PATCH /api/reservations/{id}/minutes` 응답을 `await`하여 성공/실패 메시지를 실제 서버 결과와 동기화
+- 저장 성공 시 전역 예약 상태와 회의록 페이지 로컬 상태를 모두 최신 응답값으로 갱신

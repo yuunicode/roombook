@@ -7,9 +7,12 @@ import { useAppState } from '../stores';
 function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isLoggedIn, userEmail, logout } = useAppState();
+  const { isLoggedIn, userEmail, users, logout } = useAppState();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const displayName = isLoggedIn ? userEmail.split('@')[0] : '';
+  const displayName = isLoggedIn
+    ? (users.find((user) => user.email.toLowerCase() === userEmail.toLowerCase())?.name ??
+      userEmail.split('@')[0])
+    : '';
 
   const handleLogout = () => {
     logout();

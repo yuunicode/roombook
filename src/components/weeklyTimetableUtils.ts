@@ -29,7 +29,12 @@ function getReservationEventStyle(event: TimetableReservation) {
   };
 }
 
-function getReservationOwnerName(creatorEmail: string) {
+function getReservationOwnerName(creatorName: string, creatorEmail: string) {
+  const normalizedName = creatorName.trim();
+  if (normalizedName) {
+    return normalizedName;
+  }
+
   const normalizedEmail = creatorEmail.trim();
   if (!normalizedEmail) {
     return '예약자 미정';

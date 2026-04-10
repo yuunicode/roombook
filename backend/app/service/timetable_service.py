@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.reservation_repo import list_month_preview_rows, list_week_reservations
-from app.infra.room_catalog import resolve_room_name
+from app.infra.room_repo import find_room_by_id
 
 KST = ZoneInfo("Asia/Seoul")
 
@@ -67,6 +67,7 @@ async def get_week_timetable(
     week_start = datetime.combine(week_start_date, time(0, 0), tzinfo=KST)
     week_end = week_start + timedelta(days=7)
 
+    room = await find_room_by_id(db, room_id)
     rows = await list_week_reservations(db, room_id, user_id, week_start, week_end)
     reservations = [
         WeekReservationItem(
@@ -80,7 +81,7 @@ async def get_week_timetable(
     ]
     return WeekTimetableResult(
         room_id=room_id,
-        room_name=resolve_room_name(room_id),
+        room_name=room.name if room is not None else room_id,
         view="week",
         range_start_at=week_start,
         range_end_at=week_end,
@@ -104,6 +105,7 @@ async def get_month_timetable(
     month_start = datetime.combine(month_start_date, time(0, 0), tzinfo=KST)
     month_end = datetime.combine(month_end_date, time(0, 0), tzinfo=KST)
 
+    room = await find_room_by_id(db, room_id)
     rows = await list_month_preview_rows(db, room_id, user_id, month_start, month_end)
     grouped: dict[date, list[tuple[str, str, datetime]]] = defaultdict(list)
     for reservation_id, title, starts_at in rows:
@@ -125,7 +127,7 @@ async def get_month_timetable(
 
     return MonthTimetableResult(
         room_id=room_id,
-        room_name=resolve_room_name(room_id),
+        room_name=room.name if room is not None else room_id,
         view="month",
         month=month_start_date.strftime("%Y-%m"),
         days=days,

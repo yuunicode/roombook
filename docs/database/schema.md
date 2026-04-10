@@ -1,9 +1,22 @@
 # Database Schema
 
-- Revision Date: 2026-04-06
-- Version: v1
+- Revision Date: 2026-04-09
+- Version: v2
 
 ## 테이블 상세
+
+### `rooms`
+
+| 컬럼 | 타입 | 제약조건 | 설명 |
+|------|------|----------|------|
+| id | VARCHAR(50) | PK, NOT NULL | 회의 공간 ID (`A`, `B`) |
+| name | VARCHAR(100) | NOT NULL | 화면 표시 이름 |
+| capacity | INTEGER | NOT NULL | 수용 인원 |
+| updated_at | TIMESTAMP WITH TIME ZONE | DEFAULT NOW(), NOT NULL | 수정 시각 |
+
+제약조건
+
+- `rooms_pkey`: PRIMARY KEY (`id`)
 
 ### `users`
 
@@ -78,7 +91,7 @@
 
 ## 데이터 정책 메모
 
-- `room_id`는 별도 룸 테이블 FK가 아니라 도메인 상수다.
-- 화면용 `room_name`은 API 계층에서 매핑한다.
+- `room_id`는 `rooms.id` 도메인 키를 사용한다.
+- 화면용 `room_name`은 `rooms.name` 기반으로 반환한다.
 - 초기 관리자 계정은 서버 시작 시 `ensure_admin_user()`가 동기화한다.
 - 부서 정보는 모든 사용자에 대해 필수다.

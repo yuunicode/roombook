@@ -6,9 +6,12 @@ import {
   createCompanyUser,
   createReservation as createReservationApi,
   deleteReservation as deleteReservationApi,
+  getReservationMinutes as getReservationMinutesApi,
   listCompanyUsers,
+  listRooms,
   listReservations,
   type ReservationDto,
+  type RoomDto,
   updateReservationMinutes,
 } from '../api';
 
@@ -21,14 +24,22 @@ type AppUser = {
 };
 
 type AppReservation = TimetableReservation & {
-  room: string;
+  roomId: string;
+  roomName: string;
   attendees: AppUser[];
+};
+
+type AppRoom = {
+  id: string;
+  name: string;
+  capacity: number;
 };
 
 type AppStateContextValue = {
   userEmail: string;
   isLoggedIn: boolean;
   users: AppUser[];
+  rooms: AppRoom[];
   reservations: AppReservation[];
   reservationLabels: string[];
   setUserEmail: (email: string) => void;
@@ -40,6 +51,11 @@ type AppStateContextValue = {
     reservationId: string,
     payload: Omit<ReservationStatus, 'id' | 'creatorEmail'>
   ) => void;
+  saveReservationMinutes: (
+    reservationId: string,
+    payload: Omit<ReservationStatus, 'id' | 'creatorEmail' | 'creatorName'>
+  ) => Promise<AppReservation>;
+  getReservationMinutes: (reservationId: string) => Promise<AppReservation | null>;
   deleteReservation: (reservationId: string) => void;
 };
 
@@ -53,13 +69,9 @@ function mapReservationDtoToAppReservation(
   item: ReservationDto,
   allUsers: AppUser[]
 ): AppReservation {
-  const attendees = item.attendees
+  const attendees = (item.attendees ?? [])
     .map((attendee) => allUsers.find((user) => user.id === attendee.id))
     .filter((user): user is AppUser => Boolean(user));
-
-  const room = item.room_id?.toLowerCase().startsWith('room-')
-    ? item.room_id
-    : `room-${item.room_id.toLowerCase()}`;
 
   return {
     id: item.id,
@@ -73,20 +85,19 @@ function mapReservationDtoToAppReservation(
     meetingContent: item.meeting_content ?? '',
     meetingResult: item.meeting_result ?? '',
     minutesAttachment: item.minutes_attachment ?? '',
-    creatorEmail: item.created_by.email,
-    room,
+    creatorEmail: item.created_by?.email ?? userEmailFallback(allUsers),
+    creatorName: item.created_by?.name ?? '',
+    roomId: item.room_id,
+    roomName: item.room_name || item.room_id,
   };
+}
+
+function userEmailFallback(users: AppUser[]): string {
+  return users[0]?.email ?? '';
 }
 
 function toIsoString(date: Date): string {
   return date.toISOString();
-}
-
-function toApiRoomId(room: string): string {
-  if (room.startsWith('room-')) {
-    return room.replace('room-', '').toUpperCase();
-  }
-  return room.toUpperCase();
 }
 
 function AppStateProvider({ children }: { children: ReactNode }) {
@@ -94,6 +105,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
     return window.localStorage.getItem(SESSION_KEY) ?? '';
   });
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [rooms, setRooms] = useState<AppRoom[]>([]);
   const [reservations, setReservations] = useState<AppReservation[]>([]);
   const [reservationLabels] = useState<string[]>(() => {
     const saved = window.localStorage.getItem(RESERVATION_LABELS_KEY);
@@ -111,6 +123,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!userEmail) {
       setUsers([]);
+      setRooms([]);
       setReservations([]);
       return;
     }
@@ -118,9 +131,10 @@ function AppStateProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     const hydrate = async () => {
       try {
-        const [nextUsers, nextReservations] = await Promise.all([
+        const [nextUsers, nextReservations, nextRooms] = await Promise.all([
           listCompanyUsers(),
           listReservations(),
+          listRooms(),
         ]);
         if (!mounted) return;
         const mappedUsers: AppUser[] = nextUsers.map((user) => ({
@@ -130,12 +144,20 @@ function AppStateProvider({ children }: { children: ReactNode }) {
           department: user.department ?? '',
         }));
         setUsers(mappedUsers);
+        setRooms(
+          nextRooms.map((room: RoomDto) => ({
+            id: room.id,
+            name: room.name,
+            capacity: room.capacity,
+          }))
+        );
         setReservations(
           nextReservations.map((item) => mapReservationDtoToAppReservation(item, mappedUsers))
         );
       } catch {
         if (!mounted) return;
         setUsers([]);
+        setRooms([]);
         setReservations([]);
       }
     };
@@ -151,6 +173,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
       userEmail,
       isLoggedIn: Boolean(userEmail),
       users,
+      rooms,
       reservations,
       reservationLabels,
       setUserEmail: (email) => {
@@ -187,6 +210,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         setUserEmailState('');
         window.localStorage.removeItem(SESSION_KEY);
         setUsers([]);
+        setRooms([]);
         setReservations([]);
       },
       changePassword: async (currentPassword, newPassword) => {
@@ -195,10 +219,10 @@ function AppStateProvider({ children }: { children: ReactNode }) {
           new_password: newPassword,
         });
       },
-      addReservation: (draft, room) => {
+      addReservation: (draft, roomId) => {
         void (async () => {
           const created = await createReservationApi({
-            room_id: toApiRoomId(room),
+            room_id: roomId,
             title: draft.title,
             label: draft.label,
             start_at: toIsoString(draft.start),
@@ -227,14 +251,46 @@ function AppStateProvider({ children }: { children: ReactNode }) {
             meeting_result: payload.meetingResult,
             minutes_attachment: payload.minutesAttachment,
           });
+          const mapped = mapReservationDtoToAppReservation(updated, users);
           setReservations((prev) =>
-            prev.map((reservation) =>
-              reservation.id === id
-                ? mapReservationDtoToAppReservation(updated, users)
-                : reservation
-            )
+            prev.map((reservation) => (reservation.id === id ? mapped : reservation))
           );
         })();
+      },
+      saveReservationMinutes: async (id, payload) => {
+        const updated = await updateReservationMinutes(id, {
+          title: payload.title,
+          label: payload.label,
+          start_at: toIsoString(payload.start),
+          end_at: toIsoString(payload.end),
+          attendees: payload.attendees.map((attendee) => attendee.id),
+          external_attendees: payload.externalAttendees,
+          agenda: payload.agenda,
+          meeting_content: payload.meetingContent,
+          meeting_result: payload.meetingResult,
+          minutes_attachment: payload.minutesAttachment,
+        });
+        const mapped = mapReservationDtoToAppReservation(updated, users);
+        setReservations((prev) =>
+          prev.map((reservation) => (reservation.id === id ? mapped : reservation))
+        );
+        return mapped;
+      },
+      getReservationMinutes: async (id) => {
+        try {
+          const result = await getReservationMinutesApi(id);
+          const mapped = mapReservationDtoToAppReservation(result, users);
+          setReservations((prev) => {
+            const exists = prev.some((item) => item.id === mapped.id);
+            if (exists) {
+              return prev.map((item) => (item.id === mapped.id ? mapped : item));
+            }
+            return [mapped, ...prev];
+          });
+          return mapped;
+        } catch {
+          return null;
+        }
       },
       deleteReservation: (id) => {
         void (async () => {
@@ -243,7 +299,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         })();
       },
     }),
-    [reservationLabels, reservations, userEmail, users]
+    [reservationLabels, reservations, rooms, userEmail, users]
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
@@ -256,4 +312,4 @@ function useAppState() {
 }
 
 export { AppStateProvider, useAppState };
-export type { AppReservation, AppUser };
+export type { AppReservation, AppRoom, AppUser };

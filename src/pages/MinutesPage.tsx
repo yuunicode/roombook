@@ -8,7 +8,7 @@ import {
 } from 'react';
 import { format } from 'date-fns';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useAppState, type AppUser } from '../stores';
+import { useAppState, type AppReservation, type AppUser } from '../stores';
 import AppIcon from '../components/ui/AppIcon';
 import {
   acquireMinutesLock as acquireMinutesLockApi,
@@ -58,12 +58,21 @@ function toMarkdownFilename(value: string) {
 function MinutesPage() {
   const navigate = useNavigate();
   const { reservationId } = useParams<{ reservationId: string }>();
-  const { userEmail, users, reservations, reservationLabels, updateReservation } = useAppState();
+  const {
+    userEmail,
+    users,
+    reservations,
+    reservationLabels,
+    saveReservationMinutes,
+    getReservationMinutes,
+  } = useAppState();
 
   const reservation = useMemo(
     () => (reservationId ? (reservations.find((item) => item.id === reservationId) ?? null) : null),
     [reservationId, reservations]
   );
+  const [minutesReservation, setMinutesReservation] = useState<AppReservation | null>(null);
+  const activeReservation = minutesReservation ?? reservation;
 
   const [draft, setDraft] = useState<MinutesDraft>({
     label: '',
@@ -94,6 +103,19 @@ function MinutesPage() {
     [users, userEmail]
   );
   const viewerId = currentUser?.id ?? '';
+
+  useEffect(() => {
+    if (!reservationId) return;
+    let mounted = true;
+    void (async () => {
+      const result = await getReservationMinutes(reservationId);
+      if (!mounted || !result) return;
+      setMinutesReservation(result);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [getReservationMinutes, reservationId]);
 
   const resizeTextarea = (element: HTMLTextAreaElement | null) => {
     if (!element) return;
@@ -139,32 +161,32 @@ function MinutesPage() {
   }, [readLock, reservationId, toEditLock]);
 
   useEffect(() => {
-    if (!reservation || isEditing) {
+    if (!activeReservation || isEditing) {
       return;
     }
 
     const nextDraft: MinutesDraft = {
-      label: reservation.label ?? reservationLabels[0] ?? '',
-      title: reservation.title ?? '',
-      dateInput: format(reservation.start, 'yyyy-MM-dd'),
-      startTimeInput: format(reservation.start, 'HH:mm'),
-      endTimeInput: format(reservation.end, 'HH:mm'),
-      externalAttendees: reservation.externalAttendees ?? '',
-      agenda: reservation.agenda ?? '',
-      meetingContent: reservation.meetingContent ?? '',
-      meetingResult: reservation.meetingResult ?? '',
+      label: activeReservation.label ?? reservationLabels[0] ?? '',
+      title: activeReservation.title ?? '',
+      dateInput: format(activeReservation.start, 'yyyy-MM-dd'),
+      startTimeInput: format(activeReservation.start, 'HH:mm'),
+      endTimeInput: format(activeReservation.end, 'HH:mm'),
+      externalAttendees: activeReservation.externalAttendees ?? '',
+      agenda: activeReservation.agenda ?? '',
+      meetingContent: activeReservation.meetingContent ?? '',
+      meetingResult: activeReservation.meetingResult ?? '',
     };
 
     setDraft(nextDraft);
-    setSelectedAttendees(reservation.attendees ?? []);
+    setSelectedAttendees(activeReservation.attendees ?? []);
     setAttendeeQuery('');
     historyRef.current = [];
     setSaveMessage('');
     lastSavedKeyRef.current = JSON.stringify({
       draft: nextDraft,
-      attendees: (reservation.attendees ?? []).map((attendee) => attendee.id),
+      attendees: (activeReservation.attendees ?? []).map((attendee) => attendee.id),
     });
-  }, [reservation, reservationLabels, isEditing]);
+  }, [activeReservation, reservationLabels, isEditing]);
 
   useEffect(() => {
     resizeTextarea(agendaRef.current);
@@ -349,11 +371,22 @@ function MinutesPage() {
   const filteredUsers = useMemo(() => {
     const keyword = attendeeQuery.trim().toLowerCase();
     if (!keyword) return [];
-    return users.filter(
-      (user) =>
-        !selectedAttendees.some((attendee) => attendee.id === user.id) &&
-        (user.name.toLowerCase().includes(keyword) || user.email.toLowerCase().includes(keyword))
+
+    const candidates = users.filter(
+      (user) => !selectedAttendees.some((attendee) => attendee.id === user.id)
     );
+
+    const startsWithName = candidates.filter((user) => user.name.toLowerCase().startsWith(keyword));
+    const includesName = candidates.filter(
+      (user) =>
+        !user.name.toLowerCase().startsWith(keyword) && user.name.toLowerCase().includes(keyword)
+    );
+    const includesEmail = candidates.filter(
+      (user) =>
+        !user.name.toLowerCase().includes(keyword) && user.email.toLowerCase().includes(keyword)
+    );
+
+    return [...startsWithName, ...includesName, ...includesEmail].slice(0, 6);
   }, [attendeeQuery, selectedAttendees, users]);
 
   const handleUndo = useCallback(() => {
@@ -382,7 +415,7 @@ function MinutesPage() {
 
   const saveDraft = useCallback(
     (mode: 'auto' | 'manual') => {
-      if (!reservation || !isEditing) {
+      if (!activeReservation || !isEditing) {
         return;
       }
 
@@ -406,34 +439,41 @@ function MinutesPage() {
         return;
       }
 
-      updateReservation(reservation.id, {
-        title: draft.title,
-        label: draft.label,
-        start: nextStart,
-        end: nextEnd,
-        attendees: selectedAttendees,
-        externalAttendees: draft.externalAttendees,
-        agenda: draft.agenda,
-        meetingContent: draft.meetingContent,
-        meetingResult: draft.meetingResult,
-        minutesAttachment: reservation.minutesAttachment,
-      });
-
-      lastSavedKeyRef.current = JSON.stringify({
-        draft,
-        attendees: selectedAttendees.map((attendee) => attendee.id),
-      });
-      if (mode === 'manual') {
-        setSaveMessage('저장되었습니다.');
-      } else {
-        setSaveMessage(`자동 저장됨 (${format(new Date(), 'HH:mm:ss')})`);
-      }
+      void (async () => {
+        try {
+          const updated = await saveReservationMinutes(activeReservation.id, {
+            title: draft.title,
+            label: draft.label,
+            start: nextStart,
+            end: nextEnd,
+            attendees: selectedAttendees,
+            externalAttendees: draft.externalAttendees,
+            agenda: draft.agenda,
+            meetingContent: draft.meetingContent,
+            meetingResult: draft.meetingResult,
+            minutesAttachment: activeReservation.minutesAttachment,
+          });
+          setMinutesReservation(updated);
+          lastSavedKeyRef.current = JSON.stringify({
+            draft,
+            attendees: selectedAttendees.map((attendee) => attendee.id),
+          });
+          if (mode === 'manual') {
+            setSaveMessage('저장되었습니다.');
+          } else {
+            setSaveMessage(`자동 저장됨 (${format(new Date(), 'HH:mm:ss')})`);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '저장에 실패했습니다.';
+          setSaveMessage(message);
+        }
+      })();
     },
-    [reservation, isEditing, draft, selectedAttendees, updateReservation]
+    [activeReservation, isEditing, draft, selectedAttendees, saveReservationMinutes]
   );
 
   useEffect(() => {
-    if (!reservation || !isEditing) return;
+    if (!activeReservation || !isEditing) return;
     const timer = window.setInterval(() => {
       const currentKey = JSON.stringify({
         draft,
@@ -443,7 +483,7 @@ function MinutesPage() {
       saveDraft('auto');
     }, AUTO_SAVE_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [reservation, isEditing, draft, selectedAttendees, saveDraft]);
+  }, [activeReservation, isEditing, draft, selectedAttendees, saveDraft]);
 
   const internalAttendeeText = selectedAttendees.map((attendee) => attendee.name).join(', ');
   const lockByOther = Boolean(activeLock && activeLock.holderUserId !== viewerId);
@@ -465,7 +505,7 @@ function MinutesPage() {
   };
 
   const handleDownloadMarkdown = () => {
-    if (!reservation) return;
+    if (!activeReservation) return;
 
     const markdown = [
       `# ${draft.title || '회의록 제목'}`,
@@ -513,7 +553,7 @@ function MinutesPage() {
     );
   }
 
-  if (!reservation) {
+  if (!activeReservation) {
     return (
       <div className="empty-page-state">
         <h2 className="page-title">예약 정보를 찾을 수 없습니다</h2>
@@ -585,6 +625,26 @@ function MinutesPage() {
             }}
           >
             <AppIcon name="download" style={{ width: '14px', height: '14px' }} />
+          </button>
+          <button
+            className="page-mode-button"
+            type="button"
+            onClick={() => saveDraft('manual')}
+            disabled={!isEditing}
+            style={{
+              whiteSpace: 'nowrap',
+              background: 'rgba(16, 18, 24, 0.08)',
+              color: '#6b563e',
+              border: '1px solid rgba(107, 86, 62, 0.22)',
+              borderRadius: '8px',
+              padding: '0 10px',
+              height: '28px',
+              fontSize: '12px',
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
+            저장
           </button>
           <button
             className="page-mode-button"
@@ -703,15 +763,7 @@ function MinutesPage() {
 
         <div className="status-info-group" style={{ marginBottom: '16px' }}>
           <label className="status-info-label">내부 참석자</label>
-          <input
-            className="linear-input"
-            style={{ marginBottom: '8px' }}
-            value={attendeeQuery}
-            placeholder="이름 또는 이메일 검색..."
-            onChange={(e) => setAttendeeQuery(e.target.value)}
-            disabled={!isEditing}
-          />
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          <div className="attendee-token-input">
             {selectedAttendees.map((attendee) => (
               <span
                 key={attendee.id}
@@ -726,7 +778,13 @@ function MinutesPage() {
                 {isEditing ? ' ✕' : ''}
               </span>
             ))}
-            {selectedAttendees.length === 0 && <span className="status-info-value">없음</span>}
+            <input
+              className="attendee-token-field"
+              value={attendeeQuery}
+              placeholder={selectedAttendees.length === 0 ? '이름 입력...' : ''}
+              onChange={(e) => setAttendeeQuery(e.target.value)}
+              disabled={!isEditing}
+            />
           </div>
           {isEditing && filteredUsers.length > 0 && (
             <div
@@ -864,27 +922,6 @@ function MinutesPage() {
             onKeyDown={handleEditorKeyDown('meetingResult')}
             disabled={!isEditing}
           />
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginTop: '16px',
-            gap: '12px',
-          }}
-        >
-          <div />
-          <button
-            className="linear-primary-button"
-            type="button"
-            style={{ width: 'auto', padding: '0 24px', whiteSpace: 'nowrap' }}
-            onClick={() => saveDraft('manual')}
-            disabled={!isEditing}
-          >
-            저장하기
-          </button>
         </div>
       </section>
     </div>

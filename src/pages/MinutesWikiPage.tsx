@@ -31,7 +31,10 @@ function MinutesWikiPage() {
     const now = new Date();
     return reservations
       .filter((reservation) => {
-        const creatorName = reservation.creatorEmail.split('@')[0] ?? reservation.creatorEmail;
+        const creatorName =
+          reservation.creatorName ||
+          reservation.creatorEmail.split('@')[0] ||
+          reservation.creatorEmail;
         const month = reservation.start.getMonth() + 1;
         const day = reservation.start.getDate();
         const internalAttendees = reservation.attendees.map((attendee) => attendee.name).join(' ');
@@ -169,15 +172,17 @@ function MinutesWikiPage() {
           overflowX: 'auto',
         }}
       >
-        <div style={{ minWidth: '1100px' }}>
+        <div style={{ minWidth: '980px' }}>
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '180px 120px 260px 120px 160px 130px 130px',
+              gridTemplateColumns: '180px 90px 260px 120px 110px 150px 82px',
               gap: '10px',
               padding: '12px 14px',
               borderBottom: '1px solid var(--border)',
               background: '#fafafb',
+              justifyItems: 'center',
+              textAlign: 'center',
             }}
           >
             <span className="status-info-label">날짜/시간</span>
@@ -186,22 +191,32 @@ function MinutesWikiPage() {
             <span className="status-info-label">회의실</span>
             <span className="status-info-label">예약자</span>
             <span className="status-info-label">내부 참석자</span>
-            <span className="status-info-label">바로가기</span>
+            <span className="status-info-label">회의록</span>
           </div>
 
           {filteredReservations.map((reservation) => {
-            const creatorName = reservation.creatorEmail.split('@')[0] ?? reservation.creatorEmail;
-            const internalAttendeeCount = reservation.attendees.length;
+            const creatorName =
+              reservation.creatorName ||
+              reservation.creatorEmail.split('@')[0] ||
+              reservation.creatorEmail;
+            const internalAttendeeDisplay =
+              reservation.attendees.length === 0
+                ? '없음'
+                : reservation.attendees.length === 1
+                  ? reservation.attendees[0].name
+                  : `${reservation.attendees[0].name} +${reservation.attendees.length - 1}`;
             return (
               <div
                 key={reservation.id}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '180px 120px 260px 120px 160px 130px 130px',
+                  gridTemplateColumns: '180px 90px 260px 120px 110px 150px 82px',
                   gap: '10px',
                   padding: '12px 14px',
                   borderBottom: '1px solid var(--border)',
                   alignItems: 'center',
+                  justifyItems: 'center',
+                  textAlign: 'center',
                 }}
               >
                 <span style={{ fontSize: '13px', fontWeight: 700 }}>
@@ -216,17 +231,39 @@ function MinutesWikiPage() {
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
+                    width: '100%',
                   }}
                 >
                   {reservation.title}
                 </span>
-                <span style={{ fontSize: '13px' }}>{reservation.room}</span>
+                <span style={{ fontSize: '13px' }}>{reservation.roomName}</span>
                 <span style={{ fontSize: '13px' }}>{creatorName}</span>
-                <span style={{ fontSize: '13px' }}>{internalAttendeeCount}명</span>
+                <span
+                  style={{
+                    fontSize: '13px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    width: '100%',
+                  }}
+                  title={
+                    reservation.attendees.map((attendee) => attendee.name).join(', ') || '없음'
+                  }
+                >
+                  {internalAttendeeDisplay}
+                </span>
                 <button
                   className="nav-menu-item"
                   type="button"
                   onClick={() => navigate(`/minutes/${reservation.id}`)}
+                  style={{
+                    width: '100%',
+                    minWidth: 0,
+                    padding: '0 8px',
+                    height: '28px',
+                    fontSize: '12px',
+                    whiteSpace: 'nowrap',
+                  }}
                 >
                   보기
                 </button>

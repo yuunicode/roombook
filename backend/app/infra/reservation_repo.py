@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.reservation import Reservation
+from app.infra.room import Room
 from app.infra.timetable import Timetable
 from app.infra.user import User
 
@@ -24,11 +25,12 @@ async def find_owned_reservation_by_id(db: AsyncSession, reservation_id: str, us
 
 async def find_owned_reservation_with_timetable_and_creator(
     db: AsyncSession, reservation_id: str, user_id: str
-) -> tuple[Reservation, Timetable, User] | None:
+) -> tuple[Reservation, Timetable, User, Room | None] | None:
     row = await db.execute(
-        select(Reservation, Timetable, User)
+        select(Reservation, Timetable, User, Room)
         .join(Timetable, Timetable.id == Reservation.timetable_id)
         .join(User, User.id == Reservation.user_id)
+        .outerjoin(Room, Room.id == Timetable.room_id)
         .where(Reservation.id == reservation_id, Reservation.user_id == user_id)
     )
     item = row.tuples().first()
@@ -39,11 +41,12 @@ async def find_owned_reservation_with_timetable_and_creator(
 
 async def find_reservation_with_timetable_and_creator(
     db: AsyncSession, reservation_id: str
-) -> tuple[Reservation, Timetable, User] | None:
+) -> tuple[Reservation, Timetable, User, Room | None] | None:
     row = await db.execute(
-        select(Reservation, Timetable, User)
+        select(Reservation, Timetable, User, Room)
         .join(Timetable, Timetable.id == Reservation.timetable_id)
         .join(User, User.id == Reservation.user_id)
+        .outerjoin(Room, Room.id == Timetable.room_id)
         .where(Reservation.id == reservation_id)
     )
     item = row.tuples().first()
@@ -121,11 +124,12 @@ async def list_month_preview_rows(
 
 async def list_all_reservations_with_timetable_and_creator(
     db: AsyncSession,
-) -> list[tuple[Reservation, Timetable, User]]:
+) -> list[tuple[Reservation, Timetable, User, Room | None]]:
     rows = await db.execute(
-        select(Reservation, Timetable, User)
+        select(Reservation, Timetable, User, Room)
         .join(Timetable, Timetable.id == Reservation.timetable_id)
         .join(User, User.id == Reservation.user_id)
+        .outerjoin(Room, Room.id == Timetable.room_id)
         .order_by(Timetable.start_at.desc())
     )
     return list(rows.tuples().all())

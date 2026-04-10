@@ -9,7 +9,7 @@ import {
 import { format, getDay, parse, startOfWeek } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import type { AppUser } from '../stores';
-import { getReservationEventStyle, getReservationOwnerName } from './weeklyTimetableUtils';
+import { getReservationEventStyle } from './weeklyTimetableUtils';
 
 const locales = {
   ko,
@@ -36,6 +36,7 @@ export type TimetableReservation = CalendarEvent & {
   meetingResult: string;
   minutesAttachment: string;
   creatorEmail: string;
+  creatorName?: string;
 };
 
 type WeeklyTimetableProps = {
@@ -48,23 +49,23 @@ type WeeklyTimetableProps = {
 
 function WeeklyEventCard({ event }: EventProps<TimetableReservation>) {
   const attendeeNames = (event.attendees ?? []).map((attendee) => attendee.name);
-  const ownerName = getReservationOwnerName(event.creatorEmail ?? '');
+  const participantLine = attendeeNames.join(', ');
   const isCompactEvent =
     event.start instanceof Date &&
     event.end instanceof Date &&
     event.end.getTime() - event.start.getTime() <= 30 * 60 * 1000;
+  const normalizedLabel = (event.label ?? '').trim();
+  const titleLine =
+    normalizedLabel && normalizedLabel !== '없음'
+      ? `[${normalizedLabel}] ${event.title}`
+      : event.title;
 
   return (
     <div className="weekly-event-card">
-      {isCompactEvent ? (
-        <p className="weekly-event-title">{ownerName}</p>
-      ) : (
-        <>
-          <p className="weekly-event-owner">{ownerName}</p>
-          <p className="weekly-event-title">{event.title}</p>
-          <p className="weekly-event-attendees">{attendeeNames.join(', ') || '참여자 없음'}</p>
-        </>
-      )}
+      <p className="weekly-event-title">{titleLine}</p>
+      {!isCompactEvent ? (
+        <p className="weekly-event-attendees">{participantLine || '참석자 없음'}</p>
+      ) : null}
     </div>
   );
 }

@@ -1,16 +1,8 @@
 import React from 'react';
-import {
-  Calendar,
-  Views,
-  dateFnsLocalizer,
-  type EventProps,
-} from 'react-big-calendar';
+import { Calendar, Views, dateFnsLocalizer, type EventProps } from 'react-big-calendar';
 import { format, getDay, parse, startOfWeek } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import {
-  getReservationEventStyle,
-  getReservationOwnerName,
-} from './weeklyTimetableUtils';
+import { getReservationEventStyle } from './weeklyTimetableUtils';
 import type { TimetableReservation } from './WeeklyTimetable';
 import type { DateCellWrapperProps } from 'react-big-calendar';
 
@@ -28,8 +20,13 @@ const localizer = dateFnsLocalizer({
 
 function MonthlyEventItem({ event }: EventProps<TimetableReservation>) {
   const startTime = event.start ? format(event.start, 'HH:mm') : '';
-  const ownerName = getReservationOwnerName(event.creatorEmail ?? '');
-  return <span>{`${startTime} ${ownerName} · ${event.title}`.trim()}</span>;
+  const normalizedLabel = (event.label ?? '').trim();
+  const labelAndTitle =
+    normalizedLabel && normalizedLabel !== '없음'
+      ? `[${normalizedLabel}] ${event.title}`
+      : event.title;
+  const titleLine = `${startTime} ${labelAndTitle}`.trim();
+  return <span className="monthly-event-title">{titleLine}</span>;
 }
 
 /**
@@ -43,14 +40,14 @@ type DateCellWrapperWithSelectProps = DateCellWrapperProps & {
 const DateCellWrapper = ({ children, value, onSelect }: DateCellWrapperWithSelectProps) => {
   const day = value.getDay();
   const isWeekend = day === 0 || day === 6;
-  
+
   if (isWeekend) {
     return <div className="rbc-day-bg weekend-hidden" style={{ display: 'none' }} />;
   }
 
   return React.cloneElement(children, {
     onClick: () => onSelect(value),
-    style: { ...children.props.style, cursor: 'pointer' }
+    style: { ...children.props.style, cursor: 'pointer' },
   });
 };
 

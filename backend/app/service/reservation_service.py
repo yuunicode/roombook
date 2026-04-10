@@ -19,7 +19,8 @@ from app.infra.reservation_repo import (
     find_reservation_with_timetable_and_creator,
     list_all_reservations_with_timetable_and_creator,
 )
-from app.infra.room_catalog import resolve_room_name
+from app.infra.room import Room
+from app.infra.room_repo import find_room_by_id
 from app.infra.timetable import Timetable
 from app.infra.timetable_repo import add_timetable, find_timetable_by_room_and_time
 from app.infra.user import User
@@ -124,6 +125,10 @@ async def create_reservation(
     if owner is None:
         return DomainError(code="UNAUTHORIZED", message="로그인이 필요합니다.")
 
+    room = await find_room_by_id(db, payload.room_id)
+    if room is None:
+        return DomainError(code="INVALID_ARGUMENT", message="존재하지 않는 회의 공간입니다.")
+
     if not _is_valid_datetime_range(payload.start_at, payload.end_at):
         return DomainError(code="INVALID_ARGUMENT", message="종료시간은 시작시간보다 커야 합니다.")
 
@@ -170,7 +175,7 @@ async def create_reservation(
     return CreateReservationResult(
         id=reservation.id,
         room_id=payload.room_id,
-        room_name=resolve_room_name(payload.room_id),
+        room_name=room.name,
         title=reservation.title,
         label=reservation.label,
         purpose=reservation.purpose,
@@ -190,8 +195,8 @@ async def get_reservation_detail(
     if item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
 
-    reservation, timetable, creator = item
-    return await _to_reservation_detail_result(reservation, timetable, creator, db)
+    reservation, timetable, creator, room = item
+    return await _to_reservation_detail_result(reservation, timetable, creator, room, db)
 
 
 async def get_reservation_minutes_detail(
@@ -201,8 +206,8 @@ async def get_reservation_minutes_detail(
     item = await find_reservation_with_timetable_and_creator(db, reservation_id)
     if item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
-    reservation, timetable, creator = item
-    return await _to_reservation_detail_result(reservation, timetable, creator, db)
+    reservation, timetable, creator, room = item
+    return await _to_reservation_detail_result(reservation, timetable, creator, room, db)
 
 
 async def list_reservations_for_wiki(
@@ -225,7 +230,7 @@ async def list_reservations_for_wiki(
     label_filter = label.strip() if label else None
 
     filtered: list[ReservationDetailResult] = []
-    for reservation, timetable, creator in rows:
+    for reservation, timetable, creator, room in rows:
         if threshold is not None and timetable.start_at < threshold:
             continue
         if month is not None and timetable.start_at.month != month:
@@ -239,7 +244,7 @@ async def list_reservations_for_wiki(
             if creator_filter not in creator_pool:
                 continue
 
-        detail = await _to_reservation_detail_result(reservation, timetable, creator, db)
+        detail = await _to_reservation_detail_result(reservation, timetable, creator, room, db)
         if attendee_filter is not None:
             attendee_pool = " ".join(
                 [detail.external_attendees or "", *[f"{item.name} {item.email}" for item in detail.attendees]]
@@ -260,8 +265,8 @@ async def update_reservation(
     item = await find_owned_reservation_with_timetable_and_creator(db, reservation_id, auth_user_id)
     if item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
-    reservation, current_timetable, creator = item
-    return await _update_reservation_internal(reservation, current_timetable, creator, payload, db)
+    reservation, current_timetable, creator, room = item
+    return await _update_reservation_internal(reservation, current_timetable, creator, room, payload, db)
 
 
 async def update_reservation_minutes(
@@ -272,8 +277,8 @@ async def update_reservation_minutes(
     item = await find_reservation_with_timetable_and_creator(db, reservation_id)
     if item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
-    reservation, current_timetable, creator = item
-    return await _update_reservation_internal(reservation, current_timetable, creator, payload, db)
+    reservation, current_timetable, creator, room = item
+    return await _update_reservation_internal(reservation, current_timetable, creator, room, payload, db)
 
 
 async def delete_reservation(
@@ -363,6 +368,7 @@ async def _update_reservation_internal(
     reservation: Reservation,
     current_timetable: Timetable,
     creator: User,
+    room: Room | None,
     payload: UpdateReservationInput,
     db: AsyncSession,
 ) -> ReservationDetailResult | DomainError:
@@ -433,7 +439,7 @@ async def _update_reservation_internal(
     return ReservationDetailResult(
         id=reservation.id,
         room_id=current_timetable.room_id,
-        room_name=resolve_room_name(current_timetable.room_id),
+        room_name=room.name if room is not None else current_timetable.room_id,
         title=reservation.title,
         label=reservation.label,
         purpose=reservation.purpose,
@@ -456,6 +462,7 @@ async def _to_reservation_detail_result(
     reservation: Reservation,
     timetable: Timetable,
     creator: User,
+    room: Room | None,
     db: AsyncSession,
 ) -> ReservationDetailResult:
     attendee_rows = await list_attendees_by_reservation_id(db, reservation.id)
@@ -463,7 +470,7 @@ async def _to_reservation_detail_result(
     return ReservationDetailResult(
         id=reservation.id,
         room_id=timetable.room_id,
-        room_name=resolve_room_name(timetable.room_id),
+        room_name=room.name if room is not None else timetable.room_id,
         title=reservation.title,
         label=reservation.label,
         purpose=reservation.purpose,

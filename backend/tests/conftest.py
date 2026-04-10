@@ -6,8 +6,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.infra import minutes_lock, reservation, reservation_attendee, timetable, user  # noqa: F401
+from app.infra import minutes_lock, reservation, reservation_attendee, room, timetable, user  # noqa: F401
 from app.infra.db import Base, get_db_session
+from app.infra.room import Room
 from app.infra.user import User
 from app.main import app
 from app.service.auth_service import hash_password
@@ -29,6 +30,8 @@ def client() -> Iterator[TestClient]:
         async with session_local() as session:
             session.add_all(
                 [
+                    Room(id="A", name="회의실", capacity=30),
+                    Room(id="B", name="회의테이블", capacity=6),
                     User(
                         id="1",
                         name="관리자",

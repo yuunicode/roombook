@@ -12,6 +12,12 @@ export type UserDto = {
   department?: string;
 };
 
+export type RoomDto = {
+  id: string;
+  name: string;
+  capacity: number;
+};
+
 type AuthResponse = {
   user: UserDto;
 };
@@ -45,11 +51,11 @@ export type ReservationDto = {
   meeting_content?: string | null;
   meeting_result?: string | null;
   minutes_attachment?: string | null;
-  created_by: {
+  created_by?: {
     name: string;
     email: string;
   };
-  attendees: Array<{
+  attendees?: Array<{
     id: string;
     name: string;
     email: string;
@@ -145,6 +151,12 @@ export async function listCompanyUsers(): Promise<UserDto[]> {
   });
 }
 
+export async function listRooms(): Promise<RoomDto[]> {
+  return requestJson<RoomDto[]>('/rooms', {
+    method: 'GET',
+  });
+}
+
 export async function changePassword(payload: ChangePasswordPayload): Promise<UserDto> {
   const result = await requestJson<AuthResponse>('/auth/change-password', {
     method: 'POST',
@@ -167,6 +179,12 @@ function toQueryString(query: ReservationQuery): string {
 
 export async function listReservations(query: ReservationQuery = {}): Promise<ReservationDto[]> {
   return requestJson<ReservationDto[]>(`/reservations${toQueryString(query)}`, {
+    method: 'GET',
+  });
+}
+
+export async function getReservationMinutes(reservationId: string): Promise<ReservationDto> {
+  return requestJson<ReservationDto>(`/reservations/${reservationId}/minutes`, {
     method: 'GET',
   });
 }
