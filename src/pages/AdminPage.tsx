@@ -209,7 +209,7 @@ function AdminPage() {
               >
                 <span>{user.id}</span>
                 <span>{user.name}</span>
-                <span style={{ textAlign: 'left' }}>{user.email}</span>
+                <span>{user.email}</span>
                 <span>{user.department}</span>
                 <button
                   className="nav-menu-item"
@@ -241,8 +241,9 @@ function AdminPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+            gridTemplateColumns: '1.35fr 1fr',
             gap: '14px',
+            alignItems: 'start',
           }}
         >
           <div
@@ -251,8 +252,8 @@ function AdminPage() {
               border: '1px solid var(--border)',
               borderRadius: '12px',
               padding: '14px',
-              minHeight: '560px',
-              maxHeight: '560px',
+              minHeight: '640px',
+              maxHeight: '640px',
               display: 'flex',
               flexDirection: 'column',
             }}
@@ -350,7 +351,7 @@ function AdminPage() {
                 >
                   <span>{user.id}</span>
                   <span>{user.name}</span>
-                  <span style={{ textAlign: 'left' }}>{user.email}</span>
+                  <span>{user.email}</span>
                   <span>{user.department}</span>
                   <button
                     className="nav-menu-item"
@@ -380,8 +381,8 @@ function AdminPage() {
               border: '1px solid var(--border)',
               borderRadius: '12px',
               padding: '14px',
-              minHeight: '560px',
-              maxHeight: '560px',
+              minHeight: '520px',
+              maxHeight: '520px',
               display: 'flex',
               flexDirection: 'column',
             }}
@@ -453,6 +454,7 @@ function AdminPage() {
                     onClick={async () => {
                       try {
                         await renameReservationLabel(label, (labelRename[label] ?? label).trim());
+                        alert('변경되었습니다.');
                       } catch (error) {
                         alert(error instanceof Error ? error.message : '라벨 수정 실패');
                       }

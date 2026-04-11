@@ -13,7 +13,6 @@ function MinutesWikiPage() {
   const [monthFilter, setMonthFilter] = useState('');
   const [dayFilter, setDayFilter] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
-  const [creatorFilter, setCreatorFilter] = useState('');
   const [attendeeFilter, setAttendeeFilter] = useState('');
 
   const labelOptions = useMemo(
@@ -31,10 +30,6 @@ function MinutesWikiPage() {
     const now = new Date();
     return reservations
       .filter((reservation) => {
-        const creatorName =
-          reservation.creatorName ||
-          reservation.creatorEmail.split('@')[0] ||
-          reservation.creatorEmail;
         const month = reservation.start.getMonth() + 1;
         const day = reservation.start.getDate();
         const internalAttendees = reservation.attendees.map((attendee) => attendee.name).join(' ');
@@ -49,22 +44,12 @@ function MinutesWikiPage() {
         if (monthFilter && month !== Number(monthFilter)) return false;
         if (dayFilter && day !== Number(dayFilter)) return false;
         if (labelFilter && reservation.label !== labelFilter) return false;
-        if (creatorFilter && !creatorName.toLowerCase().includes(creatorFilter.toLowerCase()))
-          return false;
         if (attendeeFilter && !attendeeKeywordPool.includes(attendeeFilter.toLowerCase()))
           return false;
         return true;
       })
       .sort((a, b) => b.start.getTime() - a.start.getTime());
-  }, [
-    reservations,
-    recentMonthsFilter,
-    monthFilter,
-    dayFilter,
-    labelFilter,
-    creatorFilter,
-    attendeeFilter,
-  ]);
+  }, [reservations, recentMonthsFilter, monthFilter, dayFilter, labelFilter, attendeeFilter]);
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px 0 40px' }}>
@@ -146,14 +131,6 @@ function MinutesWikiPage() {
             </select>
           </div>
           <div className="status-info-group">
-            <label className="status-info-label">예약자</label>
-            <input
-              className="linear-input"
-              value={creatorFilter}
-              onChange={(event) => setCreatorFilter(event.target.value)}
-            />
-          </div>
-          <div className="status-info-group">
             <label className="status-info-label">참석자</label>
             <input
               className="linear-input"
@@ -176,7 +153,8 @@ function MinutesWikiPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '180px 90px 340px 100px 150px 150px 82px',
+              gridTemplateColumns:
+                '170px 84px minmax(220px, 1.2fr) minmax(260px, 1.5fr) 130px 56px',
               gap: '10px',
               padding: '12px 14px',
               borderBottom: '1px solid var(--border)',
@@ -188,17 +166,12 @@ function MinutesWikiPage() {
             <span className="status-info-label">날짜/시간</span>
             <span className="status-info-label">라벨</span>
             <span className="status-info-label">회의 제목</span>
-            <span className="status-info-label">예약자</span>
             <span className="status-info-label">내부 참석자</span>
             <span className="status-info-label">외부 참석자</span>
             <span className="status-info-label">회의록</span>
           </div>
 
           {filteredReservations.map((reservation) => {
-            const creatorName =
-              reservation.creatorName ||
-              reservation.creatorEmail.split('@')[0] ||
-              reservation.creatorEmail;
             const internalAttendeeDisplay =
               reservation.attendees.length === 0
                 ? '없음'
@@ -210,7 +183,8 @@ function MinutesWikiPage() {
                 key={reservation.id}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '180px 90px 340px 100px 150px 150px 82px',
+                  gridTemplateColumns:
+                    '170px 84px minmax(220px, 1.2fr) minmax(260px, 1.5fr) 130px 56px',
                   gap: '10px',
                   padding: '12px 14px',
                   borderBottom: '1px solid var(--border)',
@@ -228,15 +202,17 @@ function MinutesWikiPage() {
                 <span
                   style={{
                     fontSize: '13px',
-                    whiteSpace: 'nowrap',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
                     overflow: 'hidden',
-                    textOverflow: 'ellipsis',
                     width: '100%',
+                    textAlign: 'center',
+                    lineHeight: '1.35',
                   }}
                 >
                   {reservation.title}
                 </span>
-                <span style={{ fontSize: '13px' }}>{creatorName}</span>
                 <span
                   style={{
                     fontSize: '13px',
@@ -270,9 +246,9 @@ function MinutesWikiPage() {
                   style={{
                     width: '100%',
                     minWidth: 0,
-                    padding: '0 8px',
+                    padding: 0,
                     height: '28px',
-                    fontSize: '12px',
+                    fontSize: '11px',
                     whiteSpace: 'nowrap',
                   }}
                 >
