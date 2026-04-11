@@ -94,3 +94,17 @@
 - 회의록 페이지 진입 시 `GET /api/reservations/{id}/minutes`로 최신 데이터를 직접 조회
 - 저장은 `PATCH /api/reservations/{id}/minutes` 응답을 `await`하여 성공/실패 메시지를 실제 서버 결과와 동기화
 - 저장 성공 시 전역 예약 상태와 회의록 페이지 로컬 상태를 모두 최신 응답값으로 갱신
+
+5. 관리자 권한/관리자 패널 추가 (2026-04-11)
+- 사용자 권한 컬럼 추가: `users.is_admin`
+- 예약 라벨 테이블 추가: `reservation_labels`
+- 신규 마이그레이션: `20260411_01_admin_and_labels.py`
+- 관리자 API 추가
+  - `PATCH /api/users/{user_id}/admin` (관리자 권한 부여/해제)
+  - `DELETE /api/users/{user_id}` (유저 삭제)
+  - `GET/POST/PATCH/DELETE /api/labels` (라벨 조회/추가/변경/삭제)
+- 라벨 삭제 시 해당 라벨을 쓰던 예약은 자동으로 `없음`으로 치환
+- 프론트 관리자 패널(`/admin`) 추가
+  - 사용자 추가/삭제/관리자 권한 부여
+  - 라벨 추가/수정/삭제
+  - 사용자 메뉴에서 `관리자 패널`을 `비밀번호 변경` 위에 배치

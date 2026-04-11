@@ -12,8 +12,7 @@ def test_should_return_401_when_creating_user_without_login(client: TestClient) 
         json={
             "id": "new-user",
             "name": "새 사용자",
-            "email": "new.user@ecminer.com",
-            "password": "new-password",
+            "department": "R&D센터",
         },
     )
     assert response.status_code == 401
@@ -26,8 +25,7 @@ def test_should_return_403_when_non_admin_creates_user(client: TestClient) -> No
         json={
             "id": "new-user",
             "name": "새 사용자",
-            "email": "new.user@ecminer.com",
-            "password": "new-password",
+            "department": "R&D센터",
         },
     )
     assert response.status_code == 403
@@ -41,20 +39,21 @@ def test_should_create_user_when_admin_requests(client: TestClient) -> None:
         json={
             "id": "new-user",
             "name": "새 사용자",
-            "email": "new.user@ecminer.com",
-            "password": "new-password",
+            "department": "R&D센터",
         },
     )
     assert response.status_code == 201
     assert response.json() == {
         "id": "new-user",
         "name": "새 사용자",
-        "email": "new.user@ecminer.com",
+        "email": "new-user@ecminer.com",
+        "department": "R&D센터",
+        "is_admin": False,
     }
 
     relogin = client.post(
         "/api/auth/login",
-        json={"email": "new.user@ecminer.com", "password": "new-password"},
+        json={"email": "new-user@ecminer.com", "password": "ecminer"},
     )
     assert relogin.status_code == 200
 
@@ -66,8 +65,7 @@ def test_should_return_409_when_id_or_email_is_duplicated(client: TestClient) ->
         json={
             "id": "1",
             "name": "중복 아이디",
-            "email": "new.id.dup@ecminer.com",
-            "password": "pw",
+            "department": "컨설팅",
         },
     )
     assert duplicated_id.status_code == 409
@@ -76,10 +74,9 @@ def test_should_return_409_when_id_or_email_is_duplicated(client: TestClient) ->
     duplicated_email = client.post(
         "/api/users",
         json={
-            "id": "new-id-2",
+            "id": "admin",
             "name": "중복 이메일",
-            "email": "admin@ecminer.com",
-            "password": "pw",
+            "department": "사업본부",
         },
     )
     assert duplicated_email.status_code == 409

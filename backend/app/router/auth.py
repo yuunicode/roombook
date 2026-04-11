@@ -37,6 +37,7 @@ class UserResponse(BaseModel):
     id: str
     name: str
     email: str
+    is_admin: bool
 
 
 class AuthResponse(BaseModel):
@@ -103,7 +104,7 @@ async def get_me(
 
 def _to_user_response(user: AuthUser) -> UserResponse:
     # 서비스 모델을 API 응답 모델로 변환한다.
-    return UserResponse(id=user.id, name=user.name, email=user.email)
+    return UserResponse(id=user.id, name=user.name, email=user.email, is_admin=user.is_admin)
 
 
 def _unauthorized_response(message: str) -> JSONResponse:

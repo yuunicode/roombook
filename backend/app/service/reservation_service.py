@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.minutes_lock_repo import (
@@ -136,6 +138,8 @@ async def create_reservation(
     if isinstance(attendee_user_ids, DomainError):
         return attendee_user_ids
 
+    await _acquire_room_reservation_lock(db, payload.room_id)
+
     has_conflict = await find_reservation_conflict(
         db=db,
         room_id=payload.room_id,
@@ -145,32 +149,36 @@ async def create_reservation(
     if has_conflict:
         return DomainError(code="RESERVATION_CONFLICT", message="이미 해당 시간대에 예약이 존재합니다.")
 
-    timetable = await _find_or_create_timetable(
-        db=db,
-        room_id=payload.room_id,
-        start_at=payload.start_at,
-        end_at=payload.end_at,
-    )
-    reservation = Reservation(
-        id=_new_id("rsv"),
-        timetable_id=timetable.id,
-        user_id=auth_user_id,
-        title=payload.title,
-        label=(payload.label or "").strip(),
-        purpose=payload.purpose,
-        agenda_url=payload.agenda_url,
-        description=payload.description,
-        external_attendees=payload.external_attendees,
-        agenda=payload.agenda,
-        meeting_content=payload.meeting_content,
-        meeting_result=payload.meeting_result,
-        minutes_attachment=payload.minutes_attachment,
-    )
-    add_reservation(db, reservation)
-    await db.flush()
-    await replace_reservation_attendees(db, reservation.id, attendee_user_ids)
-    await db.commit()
-    await db.refresh(reservation)
+    try:
+        timetable = await _find_or_create_timetable(
+            db=db,
+            room_id=payload.room_id,
+            start_at=payload.start_at,
+            end_at=payload.end_at,
+        )
+        reservation = Reservation(
+            id=_new_id("rsv"),
+            timetable_id=timetable.id,
+            user_id=auth_user_id,
+            title=payload.title,
+            label=(payload.label or "").strip(),
+            purpose=payload.purpose,
+            agenda_url=payload.agenda_url,
+            description=payload.description,
+            external_attendees=payload.external_attendees,
+            agenda=payload.agenda,
+            meeting_content=payload.meeting_content,
+            meeting_result=payload.meeting_result,
+            minutes_attachment=payload.minutes_attachment,
+        )
+        add_reservation(db, reservation)
+        await db.flush()
+        await replace_reservation_attendees(db, reservation.id, attendee_user_ids)
+        await db.commit()
+        await db.refresh(reservation)
+    except IntegrityError:
+        await db.rollback()
+        return DomainError(code="RESERVATION_CONFLICT", message="이미 해당 시간대에 예약이 존재합니다.")
 
     return CreateReservationResult(
         id=reservation.id,
@@ -401,6 +409,8 @@ async def _update_reservation_internal(
     if not _is_valid_datetime_range(next_start_at, next_end_at):
         return DomainError(code="INVALID_ARGUMENT", message="종료시간은 시작시간보다 커야 합니다.")
 
+    await _acquire_room_reservation_lock(db, current_timetable.room_id)
+
     has_conflict = await find_reservation_conflict(
         db=db,
         room_id=current_timetable.room_id,
@@ -411,28 +421,32 @@ async def _update_reservation_internal(
     if has_conflict:
         return DomainError(code="RESERVATION_CONFLICT", message="이미 해당 시간대에 예약이 존재합니다.")
 
-    target_timetable = await _find_or_create_timetable(
-        db=db,
-        room_id=current_timetable.room_id,
-        start_at=next_start_at,
-        end_at=next_end_at,
-    )
+    try:
+        target_timetable = await _find_or_create_timetable(
+            db=db,
+            room_id=current_timetable.room_id,
+            start_at=next_start_at,
+            end_at=next_end_at,
+        )
 
-    reservation.title = next_title
-    reservation.label = next_label
-    reservation.purpose = next_purpose
-    reservation.agenda_url = next_agenda_url
-    reservation.description = next_description
-    reservation.timetable_id = target_timetable.id
-    reservation.external_attendees = next_external_attendees
-    reservation.agenda = next_agenda
-    reservation.meeting_content = next_meeting_content
-    reservation.meeting_result = next_meeting_result
-    reservation.minutes_attachment = next_minutes_attachment
-    if attendee_user_ids is not None:
-        await replace_reservation_attendees(db, reservation.id, attendee_user_ids)
-    await db.commit()
-    await db.refresh(reservation)
+        reservation.title = next_title
+        reservation.label = next_label
+        reservation.purpose = next_purpose
+        reservation.agenda_url = next_agenda_url
+        reservation.description = next_description
+        reservation.timetable_id = target_timetable.id
+        reservation.external_attendees = next_external_attendees
+        reservation.agenda = next_agenda
+        reservation.meeting_content = next_meeting_content
+        reservation.meeting_result = next_meeting_result
+        reservation.minutes_attachment = next_minutes_attachment
+        if attendee_user_ids is not None:
+            await replace_reservation_attendees(db, reservation.id, attendee_user_ids)
+        await db.commit()
+        await db.refresh(reservation)
+    except IntegrityError:
+        await db.rollback()
+        return DomainError(code="RESERVATION_CONFLICT", message="이미 해당 시간대에 예약이 존재합니다.")
 
     attendee_rows = await list_attendees_by_reservation_id(db, reservation.id)
     attendees = [AttendeeItem(id=user_id, name=name, email=email) for user_id, name, email in attendee_rows]
@@ -518,3 +532,13 @@ def _is_valid_datetime_range(start_at: datetime, end_at: datetime) -> bool:
 
 def _new_id(prefix: str) -> str:
     return f"{prefix}_{uuid4().hex}"
+
+
+async def _acquire_room_reservation_lock(db: AsyncSession, room_id: str) -> None:
+    bind = db.get_bind()
+    if bind.dialect.name != "postgresql":
+        return
+    await db.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:lock_key)::bigint)"),
+        {"lock_key": f"reservation-room:{room_id}"},
+    )

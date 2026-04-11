@@ -16,6 +16,7 @@ class AuthUser:
     id: str
     name: str
     email: str
+    is_admin: bool
 
 
 async def authenticate_user(email: str, password: str, db: AsyncSession) -> AuthUser | None:
@@ -27,7 +28,7 @@ async def authenticate_user(email: str, password: str, db: AsyncSession) -> Auth
     if not verify_password(password, user.password_hash):
         return None
 
-    return AuthUser(id=user.id, name=user.name, email=user.email)
+    return AuthUser(id=user.id, name=user.name, email=user.email, is_admin=user.is_admin)
 
 
 def create_session_token(user_id: str) -> str:
@@ -48,7 +49,7 @@ async def get_user_from_session_token(token: str, db: AsyncSession) -> AuthUser 
     if user is None:
         return None
 
-    return AuthUser(id=user.id, name=user.name, email=user.email)
+    return AuthUser(id=user.id, name=user.name, email=user.email, is_admin=user.is_admin)
 
 
 def _verify_session_token(token: str) -> str | None:

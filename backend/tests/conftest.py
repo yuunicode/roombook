@@ -6,8 +6,17 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.infra import minutes_lock, reservation, reservation_attendee, room, timetable, user  # noqa: F401
+from app.infra import (  # noqa: F401
+    minutes_lock,
+    reservation,
+    reservation_attendee,
+    reservation_label,
+    room,
+    timetable,
+    user,
+)
 from app.infra.db import Base, get_db_session
+from app.infra.reservation_label import ReservationLabel
 from app.infra.room import Room
 from app.infra.user import User
 from app.main import app
@@ -34,9 +43,10 @@ def client() -> Iterator[TestClient]:
                     Room(id="B", name="회의테이블", capacity=6),
                     User(
                         id="1",
-                        name="관리자",
+                        name="admin",
                         email="admin@ecminer.com",
                         department="운영팀",
+                        is_admin=True,
                         password_hash=hash_password("ecminer"),
                     ),
                     User(
@@ -44,8 +54,13 @@ def client() -> Iterator[TestClient]:
                         name="일반사용자",
                         email="user@ecminer.com",
                         department="개발팀",
+                        is_admin=False,
                         password_hash=hash_password("ecminer2"),
                     ),
+                    ReservationLabel(name="없음"),
+                    ReservationLabel(name="AIDA"),
+                    ReservationLabel(name="부동산"),
+                    ReservationLabel(name="KETI"),
                 ]
             )
             await session.commit()

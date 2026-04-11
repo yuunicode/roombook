@@ -11,8 +11,9 @@ def test_should_login_and_set_1year_cookie_when_credentials_are_valid(client: Te
     assert response.json() == {
         "user": {
             "id": "1",
-            "name": "관리자",
+            "name": "admin",
             "email": "admin@ecminer.com",
+            "is_admin": True,
         }
     }
     set_cookie = response.headers.get("set-cookie", "")
@@ -49,8 +50,9 @@ def test_should_return_current_user_when_session_cookie_is_valid(client: TestCli
     assert response.json() == {
         "user": {
             "id": "1",
-            "name": "관리자",
+            "name": "admin",
             "email": "admin@ecminer.com",
+            "is_admin": True,
         }
     }
 

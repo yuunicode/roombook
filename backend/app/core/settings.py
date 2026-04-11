@@ -18,7 +18,7 @@ SESSION_SIGNING_SECRET = os.getenv("SESSION_SIGNING_SECRET", "change-this-in-pro
 
 # 관리자 계정 부트스트랩(서버 시작 시 users 테이블 동기화)
 ADMIN_USER_ID = os.getenv("ADMIN_USER_ID", "1").strip()
-ADMIN_NAME = os.getenv("ADMIN_NAME", "관리자").strip()
+ADMIN_NAME = os.getenv("ADMIN_NAME", "admin").strip()
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@ecminer.com").strip().lower()
 ADMIN_DEPARTMENT = os.getenv("ADMIN_DEPARTMENT", "R&D센터").strip()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "ecminer")
