@@ -126,7 +126,6 @@ function ReservationDialog({
         locked.add(TIME_SLOTS[i]);
       }
     }
-    locked.add(TIME_SLOTS[TIME_SLOTS.length - 1]);
     return locked;
   }, [isRangeBlocked, selectedDate]);
 
@@ -181,8 +180,18 @@ function ReservationDialog({
 
   const handleTimeClick = (slot: string) => {
     if (!selectedDate) return;
+    const lastSlot = TIME_SLOTS[TIME_SLOTS.length - 1];
 
     if (!isSelectingEnd) {
+      if (slot === lastSlot) {
+        const currentStart = parse(startTime, 'HH:mm', selectedDate);
+        const candidateEnd = parse(lastSlot, 'HH:mm', selectedDate);
+        if (candidateEnd > currentStart && !isRangeBlocked(currentStart, candidateEnd)) {
+          setEndTime(lastSlot);
+          setIsSelectingEnd(false);
+        }
+        return;
+      }
       if (blockedStartSlots.has(slot)) return;
       // Start a new selection or update start point
       const idx = TIME_SLOTS.indexOf(slot);
