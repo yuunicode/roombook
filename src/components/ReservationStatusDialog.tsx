@@ -632,6 +632,26 @@ function ReservationStatusDialog({
         <div className="status-info-group">
           <span className="status-info-label">주요 안건</span>
           <p className="status-info-value">{reservation.agenda || '작성된 안건이 없습니다.'}</p>
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              navigate(`/minutes/${reservation.id}`);
+            }}
+            style={{
+              marginTop: '6px',
+              alignSelf: 'flex-start',
+              border: 'none',
+              background: 'transparent',
+              color: '#6b563e',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          >
+            [회의록 보기]
+          </button>
         </div>
       </div>
 
@@ -648,15 +668,6 @@ function ReservationStatusDialog({
           }}
         >
           예약 취소
-        </button>
-        <button
-          className="nav-menu-item"
-          onClick={() => {
-            onClose();
-            navigate(`/minutes/${reservation.id}`);
-          }}
-        >
-          회의록 보기
         </button>
         <button
           className="linear-primary-button"

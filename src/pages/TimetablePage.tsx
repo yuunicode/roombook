@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { addMonths, addWeeks } from 'date-fns';
 import {
   AppIcon,
@@ -93,6 +93,14 @@ function TimetablePage() {
       })
       .sort((a, b) => a.start.getTime() - b.start.getTime());
   }, [isLoggedIn, reservations, userEmail]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const intervalId = window.setInterval(() => {
+      void reloadReservations();
+    }, 60_000);
+    return () => window.clearInterval(intervalId);
+  }, [isLoggedIn, reloadReservations]);
 
   const handleOpenReservationFromGrid = (start: Date, end: Date) => {
     if (!currentRoomId) return;

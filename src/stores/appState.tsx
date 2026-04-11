@@ -1,5 +1,14 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { ReservationDraft, ReservationStatus, TimetableReservation } from '../components';
 import {
   changePassword as changePasswordApi,
@@ -121,6 +130,74 @@ function toIsoString(date: Date): string {
   return date.toISOString();
 }
 
+function isSameAttendees(a: AppUser[], b: AppUser[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i].id !== b[i].id) return false;
+  }
+  return true;
+}
+
+function isSameReservation(a: AppReservation, b: AppReservation): boolean {
+  return (
+    a.id === b.id &&
+    a.title === b.title &&
+    a.label === b.label &&
+    a.start.getTime() === b.start.getTime() &&
+    a.end.getTime() === b.end.getTime() &&
+    a.externalAttendees === b.externalAttendees &&
+    a.agenda === b.agenda &&
+    a.meetingContent === b.meetingContent &&
+    a.meetingResult === b.meetingResult &&
+    a.minutesAttachment === b.minutesAttachment &&
+    a.creatorEmail === b.creatorEmail &&
+    a.creatorName === b.creatorName &&
+    a.roomId === b.roomId &&
+    a.roomName === b.roomName &&
+    isSameAttendees(a.attendees, b.attendees)
+  );
+}
+
+function upsertReservation(prev: AppReservation[], next: AppReservation): AppReservation[] {
+  const index = prev.findIndex((item) => item.id === next.id);
+  if (index === -1) {
+    return [next, ...prev];
+  }
+  if (isSameReservation(prev[index], next)) {
+    return prev;
+  }
+  const copied = prev.slice();
+  copied[index] = next;
+  return copied;
+}
+
+function mergeReservationList(prev: AppReservation[], next: AppReservation[]): AppReservation[] {
+  if (prev.length !== next.length) return next;
+  const prevById = new Map(prev.map((item) => [item.id, item]));
+  let changed = false;
+  const merged = next.map((item) => {
+    const current = prevById.get(item.id);
+    if (!current) {
+      changed = true;
+      return item;
+    }
+    if (isSameReservation(current, item)) {
+      return current;
+    }
+    changed = true;
+    return item;
+  });
+  if (!changed) {
+    for (let i = 0; i < prev.length; i += 1) {
+      if (prev[i] !== merged[i]) {
+        changed = true;
+        break;
+      }
+    }
+  }
+  return changed ? merged : prev;
+}
+
 function AppStateProvider({ children }: { children: ReactNode }) {
   const [userEmail, setUserEmailState] = useState<string>(() => {
     return window.localStorage.getItem(SESSION_KEY) ?? '';
@@ -129,6 +206,15 @@ function AppStateProvider({ children }: { children: ReactNode }) {
   const [rooms, setRooms] = useState<AppRoom[]>([]);
   const [reservations, setReservations] = useState<AppReservation[]>([]);
   const [reservationLabels, setReservationLabels] = useState<string[]>(DEFAULT_RESERVATION_LABELS);
+  const usersRef = useRef<AppUser[]>([]);
+
+  useEffect(() => {
+    usersRef.current = users;
+  }, [users]);
+
+  const mapReservationWithCurrentUsers = useCallback((item: ReservationDto) => {
+    return mapReservationDtoToAppReservation(item, usersRef.current);
+  }, []);
 
   useEffect(() => {
     if (!userEmail) {
@@ -185,6 +271,95 @@ function AppStateProvider({ children }: { children: ReactNode }) {
       mounted = false;
     };
   }, [userEmail]);
+
+  const addReservationAction = useCallback(
+    async (draft: ReservationDraft, roomId: string) => {
+      const created = await createReservationApi({
+        room_id: roomId,
+        title: draft.title,
+        label: draft.label,
+        start_at: toIsoString(draft.start),
+        end_at: toIsoString(draft.end),
+        attendees: draft.attendees.map((attendee) => attendee.id),
+        external_attendees: draft.externalAttendees,
+        agenda: draft.agenda,
+        meeting_content: draft.meetingContent,
+        meeting_result: draft.meetingResult,
+        minutes_attachment: draft.minutesAttachment,
+      });
+      const mapped = mapReservationWithCurrentUsers(created);
+      setReservations((prev) => upsertReservation(prev, mapped));
+    },
+    [mapReservationWithCurrentUsers]
+  );
+
+  const updateReservationAction = useCallback(
+    async (id: string, payload: Omit<ReservationStatus, 'id' | 'creatorEmail'>) => {
+      const updated = await updateReservationMinutes(id, {
+        title: payload.title,
+        label: payload.label,
+        start_at: toIsoString(payload.start),
+        end_at: toIsoString(payload.end),
+        attendees: payload.attendees.map((attendee) => attendee.id),
+        external_attendees: payload.externalAttendees,
+        agenda: payload.agenda,
+        meeting_content: payload.meetingContent,
+        meeting_result: payload.meetingResult,
+        minutes_attachment: payload.minutesAttachment,
+      });
+      const mapped = mapReservationWithCurrentUsers(updated);
+      setReservations((prev) => upsertReservation(prev, mapped));
+    },
+    [mapReservationWithCurrentUsers]
+  );
+
+  const saveReservationMinutesAction = useCallback(
+    async (id: string, payload: Omit<ReservationStatus, 'id' | 'creatorEmail' | 'creatorName'>) => {
+      const updated = await updateReservationMinutes(id, {
+        title: payload.title,
+        label: payload.label,
+        start_at: toIsoString(payload.start),
+        end_at: toIsoString(payload.end),
+        attendees: payload.attendees.map((attendee) => attendee.id),
+        external_attendees: payload.externalAttendees,
+        agenda: payload.agenda,
+        meeting_content: payload.meetingContent,
+        meeting_result: payload.meetingResult,
+        minutes_attachment: payload.minutesAttachment,
+      });
+      const mapped = mapReservationWithCurrentUsers(updated);
+      setReservations((prev) => upsertReservation(prev, mapped));
+      return mapped;
+    },
+    [mapReservationWithCurrentUsers]
+  );
+
+  const getReservationMinutesAction = useCallback(
+    async (id: string) => {
+      try {
+        const result = await getReservationMinutesApi(id);
+        const mapped = mapReservationWithCurrentUsers(result);
+        setReservations((prev) => upsertReservation(prev, mapped));
+        return mapped;
+      } catch {
+        return null;
+      }
+    },
+    [mapReservationWithCurrentUsers]
+  );
+
+  const reloadReservationsAction = useCallback(async () => {
+    const nextReservations = await listReservations();
+    const mapped = nextReservations.map(mapReservationWithCurrentUsers);
+    setReservations((prev) => mergeReservationList(prev, mapped));
+  }, [mapReservationWithCurrentUsers]);
+
+  const deleteReservationAction = useCallback((id: string) => {
+    void (async () => {
+      await deleteReservationApi(id);
+      setReservations((prev) => prev.filter((reservation) => reservation.id !== id));
+    })();
+  }, []);
 
   const value = useMemo<AppStateContextValue>(
     () => ({
@@ -266,9 +441,10 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         ]);
         const labelNames = nextLabels.map((item) => item.name).filter((item) => item.trim());
         setReservationLabels(labelNames.length > 0 ? labelNames : DEFAULT_RESERVATION_LABELS);
-        setReservations(
-          nextReservations.map((item) => mapReservationDtoToAppReservation(item, users))
+        const mapped = nextReservations.map((item) =>
+          mapReservationDtoToAppReservation(item, users)
         );
+        setReservations((prev) => mergeReservationList(prev, mapped));
       },
       removeReservationLabel: async (name) => {
         await deleteReservationLabelApi(name);
@@ -278,16 +454,12 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         ]);
         const labelNames = nextLabels.map((item) => item.name).filter((item) => item.trim());
         setReservationLabels(labelNames.length > 0 ? labelNames : DEFAULT_RESERVATION_LABELS);
-        setReservations(
-          nextReservations.map((item) => mapReservationDtoToAppReservation(item, users))
+        const mapped = nextReservations.map((item) =>
+          mapReservationDtoToAppReservation(item, users)
         );
+        setReservations((prev) => mergeReservationList(prev, mapped));
       },
-      reloadReservations: async () => {
-        const nextReservations = await listReservations();
-        setReservations(
-          nextReservations.map((item) => mapReservationDtoToAppReservation(item, users))
-        );
-      },
+      reloadReservations: reloadReservationsAction,
       logout: () => {
         setUserEmailState('');
         window.localStorage.removeItem(SESSION_KEY);
@@ -302,83 +474,25 @@ function AppStateProvider({ children }: { children: ReactNode }) {
           new_password: newPassword,
         });
       },
-      addReservation: async (draft, roomId) => {
-        const created = await createReservationApi({
-          room_id: roomId,
-          title: draft.title,
-          label: draft.label,
-          start_at: toIsoString(draft.start),
-          end_at: toIsoString(draft.end),
-          attendees: draft.attendees.map((attendee) => attendee.id),
-          external_attendees: draft.externalAttendees,
-          agenda: draft.agenda,
-          meeting_content: draft.meetingContent,
-          meeting_result: draft.meetingResult,
-          minutes_attachment: draft.minutesAttachment,
-        });
-        setReservations((prev) => [mapReservationDtoToAppReservation(created, users), ...prev]);
-      },
-      updateReservation: async (id, payload) => {
-        const updated = await updateReservationMinutes(id, {
-          title: payload.title,
-          label: payload.label,
-          start_at: toIsoString(payload.start),
-          end_at: toIsoString(payload.end),
-          attendees: payload.attendees.map((attendee) => attendee.id),
-          external_attendees: payload.externalAttendees,
-          agenda: payload.agenda,
-          meeting_content: payload.meetingContent,
-          meeting_result: payload.meetingResult,
-          minutes_attachment: payload.minutesAttachment,
-        });
-        const mapped = mapReservationDtoToAppReservation(updated, users);
-        setReservations((prev) =>
-          prev.map((reservation) => (reservation.id === id ? mapped : reservation))
-        );
-      },
-      saveReservationMinutes: async (id, payload) => {
-        const updated = await updateReservationMinutes(id, {
-          title: payload.title,
-          label: payload.label,
-          start_at: toIsoString(payload.start),
-          end_at: toIsoString(payload.end),
-          attendees: payload.attendees.map((attendee) => attendee.id),
-          external_attendees: payload.externalAttendees,
-          agenda: payload.agenda,
-          meeting_content: payload.meetingContent,
-          meeting_result: payload.meetingResult,
-          minutes_attachment: payload.minutesAttachment,
-        });
-        const mapped = mapReservationDtoToAppReservation(updated, users);
-        setReservations((prev) =>
-          prev.map((reservation) => (reservation.id === id ? mapped : reservation))
-        );
-        return mapped;
-      },
-      getReservationMinutes: async (id) => {
-        try {
-          const result = await getReservationMinutesApi(id);
-          const mapped = mapReservationDtoToAppReservation(result, users);
-          setReservations((prev) => {
-            const exists = prev.some((item) => item.id === mapped.id);
-            if (exists) {
-              return prev.map((item) => (item.id === mapped.id ? mapped : item));
-            }
-            return [mapped, ...prev];
-          });
-          return mapped;
-        } catch {
-          return null;
-        }
-      },
-      deleteReservation: (id) => {
-        void (async () => {
-          await deleteReservationApi(id);
-          setReservations((prev) => prev.filter((reservation) => reservation.id !== id));
-        })();
-      },
+      addReservation: addReservationAction,
+      updateReservation: updateReservationAction,
+      saveReservationMinutes: saveReservationMinutesAction,
+      getReservationMinutes: getReservationMinutesAction,
+      deleteReservation: deleteReservationAction,
     }),
-    [reservationLabels, reservations, rooms, userEmail, users]
+    [
+      addReservationAction,
+      deleteReservationAction,
+      getReservationMinutesAction,
+      reloadReservationsAction,
+      reservationLabels,
+      reservations,
+      rooms,
+      saveReservationMinutesAction,
+      updateReservationAction,
+      userEmail,
+      users,
+    ]
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

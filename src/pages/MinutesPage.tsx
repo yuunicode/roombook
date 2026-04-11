@@ -38,6 +38,7 @@ type EditLock = {
 };
 
 const LOCK_HEARTBEAT_MS = 3000;
+const LIVE_SYNC_MS = 5000;
 const MAX_UNDO_HISTORY = 100;
 const MAX_BULLET_LEVEL = 4;
 const BULLET_SYMBOLS = ['•', '◦', '▪', '▫'] as const;
@@ -51,6 +52,14 @@ function getBulletPrefix(level: number) {
 function toMarkdownFilename(value: string) {
   const normalized = value.trim().replace(/[\\/:*?"<>|]/g, '-');
   return normalized || 'meeting-minutes';
+}
+
+function formatDateToken(dateInput: string, fallbackDate: Date) {
+  if (dateInput) {
+    const [yyyy, mm, dd] = dateInput.split('-');
+    if (yyyy && mm && dd) return `${yyyy}${mm}${dd}`;
+  }
+  return format(fallbackDate, 'yyyyMMdd');
 }
 
 function MinutesPage() {
@@ -90,6 +99,7 @@ function MinutesPage() {
   const [selectedAttendees, setSelectedAttendees] = useState<AppUser[]>([]);
   const historyRef = useRef<MinutesDraft[]>([]);
   const lastSavedKeyRef = useRef('');
+  const isSavingRef = useRef(false);
 
   const agendaRef = useRef<HTMLTextAreaElement>(null);
   const meetingContentRef = useRef<HTMLTextAreaElement>(null);
@@ -101,19 +111,6 @@ function MinutesPage() {
     [users, userEmail]
   );
   const viewerId = currentUser?.id ?? '';
-
-  useEffect(() => {
-    if (!reservationId) return;
-    let mounted = true;
-    void (async () => {
-      const result = await getReservationMinutes(reservationId);
-      if (!mounted || !result) return;
-      setMinutesReservation(result);
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [getReservationMinutes, reservationId]);
 
   const resizeTextarea = (element: HTMLTextAreaElement | null) => {
     if (!element) return;
@@ -397,28 +394,32 @@ function MinutesPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isEditing, handleUndo]);
 
-  const saveDraft = useCallback(() => {
-    if (!activeReservation || !isEditing) {
-      return;
-    }
+  const persistDraft = useCallback(
+    async (notice: 'silent' | 'saved' | 'completed' = 'saved') => {
+      if (!activeReservation || !isEditing || isSavingRef.current) return false;
+      if (!draft.title.trim() || !draft.dateInput || !draft.startTimeInput || !draft.endTimeInput) {
+        if (notice !== 'silent') setSaveMessage('필수 항목을 먼저 입력하세요.');
+        return false;
+      }
 
-    if (!draft.title.trim() || !draft.dateInput || !draft.startTimeInput || !draft.endTimeInput) {
-      setSaveMessage('필수 항목을 먼저 입력하세요.');
-      return;
-    }
+      const nextStart = new Date(`${draft.dateInput}T${draft.startTimeInput}`);
+      const nextEnd = new Date(`${draft.dateInput}T${draft.endTimeInput}`);
+      if (
+        Number.isNaN(nextStart.getTime()) ||
+        Number.isNaN(nextEnd.getTime()) ||
+        nextEnd <= nextStart
+      ) {
+        if (notice !== 'silent') setSaveMessage('날짜/시간이 올바르지 않습니다.');
+        return false;
+      }
 
-    const nextStart = new Date(`${draft.dateInput}T${draft.startTimeInput}`);
-    const nextEnd = new Date(`${draft.dateInput}T${draft.endTimeInput}`);
-    if (
-      Number.isNaN(nextStart.getTime()) ||
-      Number.isNaN(nextEnd.getTime()) ||
-      nextEnd <= nextStart
-    ) {
-      setSaveMessage('날짜/시간이 올바르지 않습니다.');
-      return;
-    }
+      const currentKey = JSON.stringify({
+        draft,
+        attendees: selectedAttendees.map((attendee) => attendee.id),
+      });
+      if (currentKey === lastSavedKeyRef.current) return true;
 
-    void (async () => {
+      isSavingRef.current = true;
       try {
         const updated = await saveReservationMinutes(activeReservation.id, {
           title: draft.title,
@@ -433,39 +434,84 @@ function MinutesPage() {
           minutesAttachment: activeReservation.minutesAttachment,
         });
         setMinutesReservation(updated);
-        lastSavedKeyRef.current = JSON.stringify({
-          draft,
-          attendees: selectedAttendees.map((attendee) => attendee.id),
-        });
-        setSaveMessage('저장되었습니다.');
+        lastSavedKeyRef.current = currentKey;
+        if (notice === 'saved') setSaveMessage('자동 저장되었습니다.');
+        if (notice === 'completed') setSaveMessage('수정완료되었습니다.');
+        return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : '저장에 실패했습니다.';
         setSaveMessage(message);
+        return false;
+      } finally {
+        isSavingRef.current = false;
       }
-    })();
-  }, [activeReservation, isEditing, draft, selectedAttendees, saveReservationMinutes]);
+    },
+    [activeReservation, draft, isEditing, saveReservationMinutes, selectedAttendees]
+  );
 
   const internalAttendeeText = selectedAttendees.map((attendee) => attendee.name).join(', ');
   const lockByOther = Boolean(activeLock && activeLock.holderUserId !== viewerId);
   const lockTooltip = lockByOther ? `${activeLock?.holderName}가 수정하고있습니다.` : '';
 
+  useEffect(() => {
+    if (!reservationId) return;
+    const sync = () => {
+      void (async () => {
+        if (isEditing) return;
+        const result = await getReservationMinutes(reservationId);
+        if (!result) return;
+        setMinutesReservation(result);
+      })();
+    };
+    sync();
+    const intervalId = window.setInterval(sync, LIVE_SYNC_MS);
+    return () => window.clearInterval(intervalId);
+  }, [getReservationMinutes, isEditing, reservationId]);
+
+  useEffect(() => {
+    if (!reservationId) return;
+    if (isEditing) return;
+    const syncLock = () => {
+      void (async () => {
+        const lock = await readLock();
+        setActiveLock(lock);
+      })();
+    };
+    syncLock();
+    const intervalId = window.setInterval(syncLock, LOCK_HEARTBEAT_MS);
+    return () => window.clearInterval(intervalId);
+  }, [isEditing, readLock, reservationId]);
+
+  useEffect(() => {
+    if (!isEditing) return;
+    const intervalId = window.setInterval(() => {
+      void persistDraft('silent');
+    }, LIVE_SYNC_MS);
+    return () => window.clearInterval(intervalId);
+  }, [isEditing, persistDraft]);
+
   const handleEditToggle = () => {
     if (isEditing) {
-      setIsEditing(false);
-      void releaseLock();
-      setSaveMessage('읽기 모드로 전환되었습니다.');
+      void (async () => {
+        const saved = await persistDraft('completed');
+        if (!saved) return;
+        setIsEditing(false);
+        await releaseLock();
+      })();
       return;
     }
     void (async () => {
       const acquired = await acquireLock();
       if (!acquired) return;
       setIsEditing(true);
-      setSaveMessage('수정 모드입니다.');
+      setSaveMessage('수정 중입니다.');
     })();
   };
 
   const handleDownloadMarkdown = () => {
     if (!activeReservation) return;
+    const dateToken = formatDateToken(draft.dateInput, activeReservation.start);
+    const baseName = `${dateToken}_${toMarkdownFilename(draft.title)}`;
 
     const markdown = [
       `# ${draft.title || '회의록 제목'}`,
@@ -491,9 +537,49 @@ function MinutesPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${toMarkdownFilename(draft.title)}.md`;
+    link.download = `${baseName}.md`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadPdf = () => {
+    if (!activeReservation) return;
+    const dateToken = formatDateToken(draft.dateInput, activeReservation.start);
+    const baseName = `${dateToken}_${toMarkdownFilename(draft.title)}`;
+    const source = document.getElementById('minutes-page-export-root');
+    if (!source) return;
+
+    const popup = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
+    if (!popup) {
+      setSaveMessage('PDF 저장 창을 열 수 없습니다. 팝업 차단을 확인하세요.');
+      return;
+    }
+    const copiedStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map((node) => node.outerHTML)
+      .join('\n');
+
+    popup.document.open();
+    popup.document.write(`
+      <!doctype html>
+      <html lang="ko">
+        <head>
+          <meta charset="utf-8" />
+          <title>${baseName}.pdf</title>
+          ${copiedStyles}
+          <style>
+            body { margin: 0; background: #fff; }
+            #minutes-page-export-root { max-width: 960px; margin: 0 auto; padding: 24px 0 40px; }
+          </style>
+        </head>
+        <body>${source.outerHTML}</body>
+      </html>
+    `);
+    popup.document.close();
+    popup.focus();
+    popup.onload = () => {
+      popup.print();
+      popup.close();
+    };
   };
 
   const handleGoBack = () => {
@@ -523,7 +609,10 @@ function MinutesPage() {
   }
 
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '24px 0 40px' }}>
+    <div
+      id="minutes-page-export-root"
+      style={{ maxWidth: '960px', margin: '0 auto', padding: '24px 0 40px' }}
+    >
       <section
         style={{
           display: 'flex',
@@ -533,13 +622,7 @@ function MinutesPage() {
           gap: '12px',
         }}
       >
-        <p
-          className="status-info-value"
-          style={{ color: saveMessage.includes('저장') ? '#18794e' : '#d92d20', margin: 0 }}
-        >
-          {saveMessage}
-        </p>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <select
             value={draft.label}
             onChange={(e) => updateDraft({ label: e.target.value })}
@@ -564,33 +647,58 @@ function MinutesPage() {
               </option>
             ))}
           </select>
+          {lockByOther && (
+            <p className="status-info-value" style={{ color: '#d92d20', margin: 0 }}>
+              {activeLock?.holderName}가 수정중입니다.
+            </p>
+          )}
+          {!lockByOther && saveMessage && (
+            <p
+              className="status-info-value"
+              style={{
+                color:
+                  saveMessage.includes('실패') ||
+                  saveMessage.includes('올바르지') ||
+                  saveMessage.includes('필수')
+                    ? '#d92d20'
+                    : '#18794e',
+                margin: 0,
+              }}
+            >
+              {saveMessage}
+            </p>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
           <button
             className="page-mode-button"
             type="button"
             onClick={handleDownloadMarkdown}
-            aria-label="마크다운 다운로드"
-            title="마크다운 다운로드"
+            aria-label="마크다운 저장"
+            title="마크다운 저장"
             style={{
               whiteSpace: 'nowrap',
               background: 'rgba(16, 18, 24, 0.08)',
               color: '#6b563e',
               border: '1px solid rgba(107, 86, 62, 0.22)',
               borderRadius: '8px',
-              width: '28px',
+              width: 'auto',
               height: '28px',
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: 0,
+              gap: '6px',
+              padding: '0 10px',
+              fontSize: '12px',
             }}
           >
             <AppIcon name="download" style={{ width: '14px', height: '14px' }} />
+            마크다운 저장
           </button>
           <button
             className="page-mode-button"
             type="button"
-            onClick={saveDraft}
-            disabled={!isEditing}
+            onClick={handleDownloadPdf}
             style={{
               whiteSpace: 'nowrap',
               background: 'rgba(16, 18, 24, 0.08)',
@@ -602,9 +710,11 @@ function MinutesPage() {
               fontSize: '12px',
               display: 'inline-flex',
               alignItems: 'center',
+              gap: '6px',
             }}
           >
-            저장
+            <AppIcon name="download" style={{ width: '14px', height: '14px' }} />
+            PDF 저장
           </button>
           <button
             className="page-mode-button"
@@ -625,7 +735,7 @@ function MinutesPage() {
               alignItems: 'center',
             }}
           >
-            {isEditing ? '수정 종료' : '수정'}
+            {isEditing ? '수정완료' : '수정'}
           </button>
           <button
             className="page-mode-button"
@@ -696,7 +806,7 @@ function MinutesPage() {
               type="date"
               value={draft.dateInput}
               onChange={(e) => updateDraft({ dateInput: e.target.value })}
-              disabled={!isEditing}
+              disabled
             />
           </div>
           <div className="status-info-group">
@@ -706,7 +816,7 @@ function MinutesPage() {
               type="time"
               value={draft.startTimeInput}
               onChange={(e) => updateDraft({ startTimeInput: e.target.value })}
-              disabled={!isEditing}
+              disabled
             />
           </div>
           <div className="status-info-group">
@@ -716,7 +826,7 @@ function MinutesPage() {
               type="time"
               value={draft.endTimeInput}
               onChange={(e) => updateDraft({ endTimeInput: e.target.value })}
-              disabled={!isEditing}
+              disabled
             />
           </div>
         </div>
