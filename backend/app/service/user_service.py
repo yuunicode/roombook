@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infra.user import User
 from app.infra.user_repo import (
     add_user,
+    count_active_admin_users,
     find_user_by_email_ci,
     find_user_by_id,
     list_users,
@@ -152,6 +153,10 @@ async def set_user_admin(
     target = await find_user_by_id(db, target_user_id)
     if target is None:
         return DomainError(code="NOT_FOUND", message="사용자를 찾을 수 없습니다.")
+    if target.is_admin and not is_admin:
+        active_admin_count = await count_active_admin_users(db)
+        if active_admin_count <= 1:
+            return DomainError(code="CONFLICT", message="관리자는 최소 1명 이상이어야 합니다.")
 
     target.is_admin = is_admin
     await db.commit()
@@ -181,6 +186,10 @@ async def delete_user_by_admin(
 
     if not target.is_active:
         return DomainError(code="NOT_FOUND", message="사용자를 찾을 수 없습니다.")
+    if target.is_admin:
+        active_admin_count = await count_active_admin_users(db)
+        if active_admin_count <= 1:
+            return DomainError(code="CONFLICT", message="관리자는 최소 1명 이상이어야 합니다.")
 
     target.is_active = False
     target.is_admin = False

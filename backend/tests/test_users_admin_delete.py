@@ -25,6 +25,13 @@ def test_should_return_400_when_admin_deletes_self(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "INVALID_ARGUMENT"
 
 
+def test_should_return_409_when_demoting_last_admin(client: TestClient) -> None:
+    _login(client, "admin@ecminer.com", "ecminer")
+    response = client.patch("/api/users/1/admin", json={"is_admin": False})
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "CONFLICT"
+
+
 def test_should_deactivate_user_when_admin_requests(client: TestClient) -> None:
     _login(client, "admin@ecminer.com", "ecminer")
 

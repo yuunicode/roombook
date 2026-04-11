@@ -76,3 +76,10 @@ async def resolve_user_ids_by_ids_or_emails(db: AsyncSession, identifiers: list[
         resolved[user_id] = user_id
         resolved[email] = user_id
     return resolved
+
+
+async def count_active_admin_users(db: AsyncSession) -> int:
+    row = await db.execute(
+        select(func.count()).select_from(User).where(User.is_admin.is_(True), User.is_active.is_(True))
+    )
+    return int(row.scalar_one() or 0)
