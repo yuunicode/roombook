@@ -1,3 +1,4 @@
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import ADMIN_DEPARTMENT, ADMIN_EMAIL, ADMIN_NAME, ADMIN_PASSWORD, ADMIN_USER_ID
@@ -11,6 +12,13 @@ def is_admin_user(user: AuthUser) -> bool:
 
 
 async def ensure_admin_user(db: AsyncSession) -> None:
+    # 활성 관리자 계정이 이미 있으면 부트스트랩 계정을 건드리지 않는다.
+    active_admin_count = await db.scalar(
+        select(func.count()).select_from(User).where(User.is_admin.is_(True), User.is_active.is_(True))
+    )
+    if (active_admin_count or 0) > 0:
+        return
+
     admin_by_id = await find_user_by_id(db, ADMIN_USER_ID, include_inactive=True)
     normalized_admin_email = ADMIN_EMAIL
     password_hash = hash_password(ADMIN_PASSWORD)

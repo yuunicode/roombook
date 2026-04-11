@@ -168,6 +168,11 @@ function AdminPage() {
                   className="nav-menu-item"
                   style={{ height: '28px' }}
                   onClick={async () => {
+                    const nextAction = user.isAdmin ? '해제' : '부여';
+                    const ok = window.confirm(
+                      `${user.name}(${user.id}) 사용자의 관리자 권한을 ${nextAction}하시겠습니까?`
+                    );
+                    if (!ok) return;
                     try {
                       await setUserAdmin(user.id, !user.isAdmin);
                     } catch (error) {
@@ -181,6 +186,10 @@ function AdminPage() {
                   className="nav-menu-item"
                   style={{ height: '28px', color: '#e5484d' }}
                   onClick={async () => {
+                    const ok = window.confirm(
+                      `${user.name}(${user.id}) 사용자를 퇴사 처리하시겠습니까?\n퇴사 처리 후 로그인할 수 없습니다.`
+                    );
+                    if (!ok) return;
                     try {
                       await removeUser(user.id);
                     } catch (error) {
@@ -204,6 +213,9 @@ function AdminPage() {
           }}
         >
           <h3 style={{ margin: '0 0 10px', fontSize: '14px' }}>라벨 관리</h3>
+          <p style={{ margin: '0 0 8px', fontSize: '11px', color: 'var(--text-soft)' }}>
+            기본 라벨은 "없음"이며, 라벨 제거 시 기존 예약 라벨은 자동으로 "없음"으로 변경됩니다.
+          </p>
           <div
             style={{
               display: 'grid',
@@ -277,6 +289,10 @@ function AdminPage() {
                   style={{ height: '28px', color: '#e5484d' }}
                   disabled={label === '없음'}
                   onClick={async () => {
+                    const ok = window.confirm(
+                      `"${label}" 라벨을 제거하시겠습니까?\n기존 예약 라벨은 자동으로 "없음"으로 변경됩니다.`
+                    );
+                    if (!ok) return;
                     try {
                       await removeReservationLabel(label);
                     } catch (error) {
@@ -289,9 +305,6 @@ function AdminPage() {
               </div>
             ))}
           </div>
-          <p style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-soft)' }}>
-            라벨 제거 시 기존 예약 라벨은 자동으로 "없음"으로 변경됩니다.
-          </p>
         </div>
       </section>
     </div>
