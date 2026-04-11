@@ -314,6 +314,7 @@ function TimetablePage() {
         reservation={selectedReservation}
         users={users}
         labelOptions={reservationLabels}
+        occupiedRanges={visibleReservations.map((item) => ({ start: item.start, end: item.end }))}
         onClose={() => setIsReservationStatusOpen(false)}
         onSave={updateReservation}
         onDelete={deleteReservation}
