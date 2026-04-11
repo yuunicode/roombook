@@ -10,8 +10,15 @@ function DashboardPage() {
       userEmail.split('@')[0])
     : '';
 
+  const now = new Date();
   const myUpcomingMeetings = reservations
-    .filter((r) => r.attendees.some((a) => a.email.toLowerCase() === userEmail.toLowerCase()))
+    .filter((r) => {
+      const isParticipant = r.attendees.some(
+        (a) => a.email.toLowerCase() === userEmail.toLowerCase()
+      );
+      const isUpcomingOrOngoing = r.end.getTime() >= now.getTime();
+      return isParticipant && isUpcomingOrOngoing;
+    })
     .sort((a, b) => a.start.getTime() - b.start.getTime())
     .slice(0, 3);
 

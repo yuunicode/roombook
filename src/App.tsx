@@ -7,6 +7,7 @@ import {
   DashboardPage,
   MinutesPage,
   MinutesWikiPage,
+  AdminPage,
 } from './pages';
 import MainLayout from './layouts/MainLayout';
 
@@ -21,6 +22,7 @@ function App() {
           <Route path="/minutes/:reservationId" element={<MinutesPage />} />
           <Route path="/minutes-wiki" element={<MinutesWikiPage />} />
           <Route path="/my-meetings" element={<MyMeetingsPage />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Route>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/change-password" element={<ChangePasswordPage />} />

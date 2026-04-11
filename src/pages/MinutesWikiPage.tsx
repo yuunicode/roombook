@@ -176,7 +176,7 @@ function MinutesWikiPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '180px 90px 260px 120px 110px 150px 82px',
+              gridTemplateColumns: '180px 90px 340px 100px 150px 150px 82px',
               gap: '10px',
               padding: '12px 14px',
               borderBottom: '1px solid var(--border)',
@@ -188,9 +188,9 @@ function MinutesWikiPage() {
             <span className="status-info-label">날짜/시간</span>
             <span className="status-info-label">라벨</span>
             <span className="status-info-label">회의 제목</span>
-            <span className="status-info-label">회의실</span>
             <span className="status-info-label">예약자</span>
             <span className="status-info-label">내부 참석자</span>
+            <span className="status-info-label">외부 참석자</span>
             <span className="status-info-label">회의록</span>
           </div>
 
@@ -210,7 +210,7 @@ function MinutesWikiPage() {
                 key={reservation.id}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '180px 90px 260px 120px 110px 150px 82px',
+                  gridTemplateColumns: '180px 90px 340px 100px 150px 150px 82px',
                   gap: '10px',
                   padding: '12px 14px',
                   borderBottom: '1px solid var(--border)',
@@ -236,7 +236,6 @@ function MinutesWikiPage() {
                 >
                   {reservation.title}
                 </span>
-                <span style={{ fontSize: '13px' }}>{reservation.roomName}</span>
                 <span style={{ fontSize: '13px' }}>{creatorName}</span>
                 <span
                   style={{
@@ -251,6 +250,18 @@ function MinutesWikiPage() {
                   }
                 >
                   {internalAttendeeDisplay}
+                </span>
+                <span
+                  style={{
+                    fontSize: '13px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    width: '100%',
+                  }}
+                  title={reservation.externalAttendees || ''}
+                >
+                  {reservation.externalAttendees || ''}
                 </span>
                 <button
                   className="nav-menu-item"

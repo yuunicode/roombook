@@ -10,12 +10,17 @@ export type UserDto = {
   name: string;
   email: string;
   department?: string;
+  is_admin?: boolean;
 };
 
 export type RoomDto = {
   id: string;
   name: string;
   capacity: number;
+};
+
+export type LabelDto = {
+  name: string;
 };
 
 type AuthResponse = {
@@ -25,8 +30,6 @@ type AuthResponse = {
 type CreateUserPayload = {
   id: string;
   name: string;
-  email: string;
-  password: string;
   department: string;
 };
 
@@ -154,6 +157,45 @@ export async function listCompanyUsers(): Promise<UserDto[]> {
 export async function listRooms(): Promise<RoomDto[]> {
   return requestJson<RoomDto[]>('/rooms', {
     method: 'GET',
+  });
+}
+
+export async function listReservationLabels(): Promise<LabelDto[]> {
+  return requestJson<LabelDto[]>('/labels', {
+    method: 'GET',
+  });
+}
+
+export async function createReservationLabel(name: string): Promise<LabelDto> {
+  return requestJson<LabelDto>('/labels', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function updateReservationLabel(oldName: string, name: string): Promise<LabelDto> {
+  return requestJson<LabelDto>(`/labels/${encodeURIComponent(oldName)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteReservationLabel(name: string): Promise<void> {
+  await requestJson<void>(`/labels/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function setUserAdmin(userId: string, isAdmin: boolean): Promise<UserDto> {
+  return requestJson<UserDto>(`/users/${encodeURIComponent(userId)}/admin`, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_admin: isAdmin }),
+  });
+}
+
+export async function deleteCompanyUser(userId: string): Promise<void> {
+  await requestJson<void>(`/users/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
   });
 }
 

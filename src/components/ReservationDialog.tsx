@@ -25,8 +25,9 @@ type ReservationDialogProps = {
   currentUser: AppUser | null;
   users: AppUser[];
   labelOptions: string[];
+  occupiedRanges: Array<{ start: Date; end: Date }>;
   onClose: () => void;
-  onConfirm: (draft: ReservationDraft) => void;
+  onConfirm: (draft: ReservationDraft) => Promise<void> | void;
 };
 
 const TIME_SLOTS = (() => {
@@ -54,6 +55,7 @@ function ReservationDialog({
   currentUser,
   users,
   labelOptions,
+  occupiedRanges,
   onClose,
   onConfirm,
 }: ReservationDialogProps) {
@@ -109,13 +111,61 @@ function ReservationDialog({
     return [...startsWithName, ...includesName, ...includesEmail].slice(0, 6);
   }, [attendeeQuery, selectedAttendees, users]);
 
-  const handleConfirm = () => {
+  const isRangeBlocked = useCallback(
+    (start: Date, end: Date) => occupiedRanges.some((item) => start < item.end && item.start < end),
+    [occupiedRanges]
+  );
+
+  const blockedStartSlots = useMemo(() => {
+    if (!selectedDate) return new Set<string>();
+    const locked = new Set<string>();
+    for (let i = 0; i < TIME_SLOTS.length - 1; i += 1) {
+      const segmentStart = parse(TIME_SLOTS[i], 'HH:mm', selectedDate);
+      const segmentEnd = parse(TIME_SLOTS[i + 1], 'HH:mm', selectedDate);
+      if (isRangeBlocked(segmentStart, segmentEnd)) {
+        locked.add(TIME_SLOTS[i]);
+      }
+    }
+    locked.add(TIME_SLOTS[TIME_SLOTS.length - 1]);
+    return locked;
+  }, [isRangeBlocked, selectedDate]);
+
+  useEffect(() => {
+    if (!selectedDate) return;
+    const start = parse(startTime, 'HH:mm', selectedDate);
+    const end = parse(endTime, 'HH:mm', selectedDate);
+    if (end <= start || isRangeBlocked(start, end) || blockedStartSlots.has(startTime)) {
+      for (let i = 0; i < TIME_SLOTS.length - 2; i += 1) {
+        const candidateStart = TIME_SLOTS[i];
+        if (blockedStartSlots.has(candidateStart)) continue;
+        const candidateEnd = TIME_SLOTS[i + 2];
+        const rangeStart = parse(candidateStart, 'HH:mm', selectedDate);
+        const rangeEnd = parse(candidateEnd, 'HH:mm', selectedDate);
+        if (!isRangeBlocked(rangeStart, rangeEnd)) {
+          setStartTime(candidateStart);
+          setEndTime(candidateEnd);
+          setIsSelectingEnd(false);
+          return;
+        }
+      }
+    }
+  }, [blockedStartSlots, endTime, isRangeBlocked, selectedDate, startTime]);
+
+  const handleConfirm = async () => {
     if (!title.trim() || !selectedDate) return;
 
     const start = parse(startTime, 'HH:mm', selectedDate);
     const end = parse(endTime, 'HH:mm', selectedDate);
+    if (end <= start) {
+      alert('종료시간은 시작시간보다 커야 합니다.');
+      return;
+    }
+    if (isRangeBlocked(start, end)) {
+      alert('이미 예약된 시간이 포함되어 있습니다.');
+      return;
+    }
 
-    onConfirm({
+    await onConfirm({
       title: title.trim(),
       label: selectedLabel,
       start,
@@ -130,26 +180,73 @@ function ReservationDialog({
   };
 
   const handleTimeClick = (slot: string) => {
+    if (!selectedDate) return;
+
     if (!isSelectingEnd) {
+      if (blockedStartSlots.has(slot)) return;
       // Start a new selection or update start point
-      setStartTime(slot);
-      if (slot >= endTime) {
-        const idx = TIME_SLOTS.indexOf(slot);
-        setEndTime(TIME_SLOTS[Math.min(idx + 2, TIME_SLOTS.length - 1)]);
+      const idx = TIME_SLOTS.indexOf(slot);
+      if (idx < 0) return;
+      let candidateEnd =
+        slot >= endTime ? TIME_SLOTS[Math.min(idx + 2, TIME_SLOTS.length - 1)] : endTime;
+      const rangeStart = parse(slot, 'HH:mm', selectedDate);
+      const rangeEnd = parse(candidateEnd, 'HH:mm', selectedDate);
+      if (rangeEnd <= rangeStart || isRangeBlocked(rangeStart, rangeEnd)) {
+        let found = false;
+        for (let endIdx = idx + 1; endIdx < TIME_SLOTS.length; endIdx += 1) {
+          const testEnd = TIME_SLOTS[endIdx];
+          const testEndDate = parse(testEnd, 'HH:mm', selectedDate);
+          if (testEndDate <= rangeStart) continue;
+          if (!isRangeBlocked(rangeStart, testEndDate)) {
+            candidateEnd = testEnd;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          alert('선택한 시작 시간 이후에 비어있는 구간이 없습니다.');
+          return;
+        }
       }
+      setStartTime(slot);
+      setEndTime(candidateEnd);
       setIsSelectingEnd(true);
     } else {
       // Finish range selection
       if (slot > startTime) {
+        const nextStart = parse(startTime, 'HH:mm', selectedDate);
+        const nextEnd = parse(slot, 'HH:mm', selectedDate);
+        if (isRangeBlocked(nextStart, nextEnd)) {
+          alert('이미 예약된 시간대를 포함할 수 없습니다.');
+          return;
+        }
         setEndTime(slot);
         setIsSelectingEnd(false);
       } else {
+        if (blockedStartSlots.has(slot)) return;
         // Clicked before current start, treat as setting a new start
-        setStartTime(slot);
-        if (slot >= endTime) {
-          const idx = TIME_SLOTS.indexOf(slot);
-          setEndTime(TIME_SLOTS[Math.min(idx + 2, TIME_SLOTS.length - 1)]);
+        const idx = TIME_SLOTS.indexOf(slot);
+        if (idx < 0) return;
+        let candidateEnd =
+          slot >= endTime ? TIME_SLOTS[Math.min(idx + 2, TIME_SLOTS.length - 1)] : endTime;
+        const rangeStart = parse(slot, 'HH:mm', selectedDate);
+        let found = false;
+        for (let endIdx = idx + 1; endIdx < TIME_SLOTS.length; endIdx += 1) {
+          const testEnd = TIME_SLOTS[endIdx];
+          const testEndDate = parse(testEnd, 'HH:mm', selectedDate);
+          if (testEndDate <= rangeStart) continue;
+          if (!isRangeBlocked(rangeStart, testEndDate)) {
+            candidateEnd = testEnd;
+            found = true;
+            break;
+          }
         }
+        if (!found) {
+          alert('선택한 시작 시간 이후에 비어있는 구간이 없습니다.');
+          return;
+        }
+        setStartTime(slot);
+        setEndTime(candidateEnd);
         setIsSelectingEnd(true);
       }
     }
@@ -268,12 +365,14 @@ function ReservationDialog({
                 const isStart = startTime === slot;
                 const isEnd = endTime === slot;
                 const isInRange = slot > startTime && slot < endTime;
+                const isDisabled = !isSelectingEnd && blockedStartSlots.has(slot);
 
                 return (
                   <button
                     key={slot}
-                    className={`time-slot-button ${isStart ? 'active start-edge' : ''} ${isEnd ? 'active end-edge' : ''} ${isInRange ? 'in-range' : ''}`}
+                    className={`time-slot-button ${isStart ? 'active start-edge' : ''} ${isEnd ? 'active end-edge' : ''} ${isInRange ? 'in-range' : ''} ${isDisabled ? 'disabled' : ''}`}
                     onClick={() => handleTimeClick(slot)}
+                    aria-disabled={isDisabled}
                   >
                     {slot}
                   </button>
@@ -422,7 +521,9 @@ function ReservationDialog({
                 marginTop: 0,
                 whiteSpace: 'nowrap',
               }}
-              onClick={handleConfirm}
+              onClick={() => {
+                void handleConfirm();
+              }}
               disabled={!title.trim() || !selectedDate}
             >
               예약하기

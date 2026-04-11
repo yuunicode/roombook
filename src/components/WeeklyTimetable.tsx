@@ -45,6 +45,7 @@ type WeeklyTimetableProps = {
   onNavigate: (nextDate: Date) => void;
   onSelectSlot: (start: Date, end: Date) => void;
   onSelectReservation?: (reservation: TimetableReservation) => void;
+  isSlotBlocked?: (start: Date, end: Date) => boolean;
 };
 
 function WeeklyEventCard({ event }: EventProps<TimetableReservation>) {
@@ -76,6 +77,7 @@ function WeeklyTimetable({
   onNavigate,
   onSelectSlot,
   onSelectReservation,
+  isSlotBlocked,
 }: WeeklyTimetableProps) {
   return (
     <div className="rbc-wrapper" aria-label="주간 타임테이블">
@@ -113,6 +115,10 @@ function WeeklyTimetable({
           noEventsInRange: '예약이 없습니다.',
         }}
         onSelectSlot={(slotInfo: SlotInfo) => onSelectSlot(slotInfo.start, slotInfo.end)}
+        onSelecting={(slotInfo) => {
+          if (!isSlotBlocked) return true;
+          return !isSlotBlocked(slotInfo.start, slotInfo.end);
+        }}
         onSelectEvent={(event) => onSelectReservation?.(event as TimetableReservation)}
       />
     </div>

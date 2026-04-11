@@ -57,8 +57,8 @@ button { cursor: pointer; border: none; background: transparent; }
 
 /* Sidebar */
 .main-content { flex: 1; width: 100%; max-width: 1440px; margin: 0 auto; padding: 24px; }
-.timetable-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 48px; }
-.room-sidebar { display: flex; flex-direction: column; gap: 48px; padding-top: 12px; }
+.timetable-layout { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 32px; }
+.room-sidebar { display: flex; flex-direction: column; gap: 28px; padding-top: 12px; }
 .sidebar-card-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-left: 2px; }
 .sidebar-card-title { font-size: 11px; font-weight: 700; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.05em; }
 .sidebar-card-icon, .room-button-icon { width: 14px !important; height: 14px !important; color: var(--text-soft); }

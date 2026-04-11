@@ -7,7 +7,7 @@ import { useAppState } from '../stores';
 function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isLoggedIn, userEmail, users, logout } = useAppState();
+  const { isLoggedIn, userEmail, users, isCurrentUserAdmin, logout } = useAppState();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const displayName = isLoggedIn
     ? (users.find((user) => user.email.toLowerCase() === userEmail.toLowerCase())?.name ??
@@ -70,6 +70,17 @@ function MainLayout() {
                   <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
                     <p style={{ fontSize: '11px', color: 'var(--text-soft)' }}>{userEmail}</p>
                   </div>
+                  {isCurrentUserAdmin ? (
+                    <button
+                      className="popover-item"
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        navigate('/admin');
+                      }}
+                    >
+                      관리자 패널
+                    </button>
+                  ) : null}
                   <button
                     className="popover-item"
                     onClick={() => {

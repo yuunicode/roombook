@@ -35,6 +35,7 @@ function TimetablePage() {
     reservations,
     reservationLabels,
     addReservation,
+    reloadReservations,
     updateReservation,
     deleteReservation,
   } = useAppState();
@@ -94,6 +95,17 @@ function TimetablePage() {
   }, [isLoggedIn, reservations, userEmail]);
 
   const handleOpenReservationFromGrid = (start: Date, end: Date) => {
+    if (!currentRoomId) return;
+    const hasConflict = reservations.some(
+      (item) =>
+        item.roomId === currentRoomId &&
+        item.id !== selectedReservationId &&
+        rangesOverlap(item.start, item.end, start, end)
+    );
+    if (hasConflict) {
+      alert('이미 예약된 시간대입니다.');
+      return;
+    }
     setReservationStart(start);
     setReservationEnd(end);
     setIsReservationOpen(true);
@@ -112,7 +124,14 @@ function TimetablePage() {
     setIsReservationOpen(true);
   };
 
-  const handleConfirmReservation = (draft: ReservationDraft) => {
+  const isSlotBlocked = (start: Date, end: Date) => {
+    if (!currentRoomId) return false;
+    return reservations.some(
+      (item) => item.roomId === currentRoomId && rangesOverlap(item.start, item.end, start, end)
+    );
+  };
+
+  const handleConfirmReservation = async (draft: ReservationDraft) => {
     if (!currentRoomId) return;
     if (
       reservations.some(
@@ -122,8 +141,24 @@ function TimetablePage() {
       alert('중복된 예약이 있습니다.');
       return;
     }
-    addReservation(draft, currentRoomId);
-    setIsReservationOpen(false);
+    try {
+      await addReservation(draft, currentRoomId);
+      setIsReservationOpen(false);
+    } catch (error) {
+      try {
+        await reloadReservations();
+      } catch {
+        // ignore refresh failure and keep showing original reservation failure message
+      }
+      const message = error instanceof Error ? error.message : '예약 생성에 실패했습니다.';
+      if (message.includes('이미 해당 시간대에 예약이 존재합니다') || message.includes('중복')) {
+        alert(
+          '다른 사용자가 먼저 예약했습니다. 최신 예약 현황을 반영했습니다. 시간을 다시 선택해 주세요.'
+        );
+        return;
+      }
+      alert(message);
+    }
   };
 
   return (
@@ -249,6 +284,7 @@ function TimetablePage() {
               onNavigate={setCalendarDate}
               onSelectSlot={handleOpenReservationFromGrid}
               onSelectReservation={handleOpenReservationStatus}
+              isSlotBlocked={isSlotBlocked}
             />
           ) : (
             <MonthlyTimetable
@@ -269,6 +305,7 @@ function TimetablePage() {
         currentUser={currentUser}
         users={users}
         labelOptions={reservationLabels}
+        occupiedRanges={visibleReservations.map((item) => ({ start: item.start, end: item.end }))}
         onClose={() => setIsReservationOpen(false)}
         onConfirm={handleConfirmReservation}
       />

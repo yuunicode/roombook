@@ -37,9 +37,7 @@ type EditLock = {
   updatedAt: number;
 };
 
-const AUTO_SAVE_INTERVAL_MS = 3000;
 const LOCK_HEARTBEAT_MS = 3000;
-const LOCK_POLL_INTERVAL_MS = 1000;
 const MAX_UNDO_HISTORY = 100;
 const MAX_BULLET_LEVEL = 4;
 const BULLET_SYMBOLS = ['•', '◦', '▪', '▫'] as const;
@@ -205,20 +203,6 @@ function MinutesPage() {
   }, [draft.meetingResult]);
 
   useEffect(() => {
-    const poll = window.setInterval(() => {
-      void (async () => {
-        const current = await readLock();
-        setActiveLock(current);
-        if (isEditing && current && current.holderUserId !== viewerId) {
-          setIsEditing(false);
-          setSaveMessage(`${current.holderName}가 수정중입니다.`);
-        }
-      })();
-    }, LOCK_POLL_INTERVAL_MS);
-    return () => window.clearInterval(poll);
-  }, [isEditing, readLock, viewerId]);
-
-  useEffect(() => {
     if (!isEditing) return;
     const heartbeat = window.setInterval(() => {
       void (async () => {
@@ -258,7 +242,7 @@ function MinutesPage() {
         pushHistory(prev);
         return { ...prev, ...patch };
       });
-      setSaveMessage('자동 저장 대기 중...');
+      setSaveMessage('저장 전');
     },
     [isEditing, pushHistory]
   );
@@ -413,77 +397,53 @@ function MinutesPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isEditing, handleUndo]);
 
-  const saveDraft = useCallback(
-    (mode: 'auto' | 'manual') => {
-      if (!activeReservation || !isEditing) {
-        return;
+  const saveDraft = useCallback(() => {
+    if (!activeReservation || !isEditing) {
+      return;
+    }
+
+    if (!draft.title.trim() || !draft.dateInput || !draft.startTimeInput || !draft.endTimeInput) {
+      setSaveMessage('필수 항목을 먼저 입력하세요.');
+      return;
+    }
+
+    const nextStart = new Date(`${draft.dateInput}T${draft.startTimeInput}`);
+    const nextEnd = new Date(`${draft.dateInput}T${draft.endTimeInput}`);
+    if (
+      Number.isNaN(nextStart.getTime()) ||
+      Number.isNaN(nextEnd.getTime()) ||
+      nextEnd <= nextStart
+    ) {
+      setSaveMessage('날짜/시간이 올바르지 않습니다.');
+      return;
+    }
+
+    void (async () => {
+      try {
+        const updated = await saveReservationMinutes(activeReservation.id, {
+          title: draft.title,
+          label: draft.label,
+          start: nextStart,
+          end: nextEnd,
+          attendees: selectedAttendees,
+          externalAttendees: draft.externalAttendees,
+          agenda: draft.agenda,
+          meetingContent: draft.meetingContent,
+          meetingResult: draft.meetingResult,
+          minutesAttachment: activeReservation.minutesAttachment,
+        });
+        setMinutesReservation(updated);
+        lastSavedKeyRef.current = JSON.stringify({
+          draft,
+          attendees: selectedAttendees.map((attendee) => attendee.id),
+        });
+        setSaveMessage('저장되었습니다.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '저장에 실패했습니다.';
+        setSaveMessage(message);
       }
-
-      if (!draft.title.trim() || !draft.dateInput || !draft.startTimeInput || !draft.endTimeInput) {
-        if (mode === 'manual') {
-          setSaveMessage('필수 항목을 먼저 입력하세요.');
-        }
-        return;
-      }
-
-      const nextStart = new Date(`${draft.dateInput}T${draft.startTimeInput}`);
-      const nextEnd = new Date(`${draft.dateInput}T${draft.endTimeInput}`);
-      if (
-        Number.isNaN(nextStart.getTime()) ||
-        Number.isNaN(nextEnd.getTime()) ||
-        nextEnd <= nextStart
-      ) {
-        if (mode === 'manual') {
-          setSaveMessage('날짜/시간이 올바르지 않습니다.');
-        }
-        return;
-      }
-
-      void (async () => {
-        try {
-          const updated = await saveReservationMinutes(activeReservation.id, {
-            title: draft.title,
-            label: draft.label,
-            start: nextStart,
-            end: nextEnd,
-            attendees: selectedAttendees,
-            externalAttendees: draft.externalAttendees,
-            agenda: draft.agenda,
-            meetingContent: draft.meetingContent,
-            meetingResult: draft.meetingResult,
-            minutesAttachment: activeReservation.minutesAttachment,
-          });
-          setMinutesReservation(updated);
-          lastSavedKeyRef.current = JSON.stringify({
-            draft,
-            attendees: selectedAttendees.map((attendee) => attendee.id),
-          });
-          if (mode === 'manual') {
-            setSaveMessage('저장되었습니다.');
-          } else {
-            setSaveMessage(`자동 저장됨 (${format(new Date(), 'HH:mm:ss')})`);
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : '저장에 실패했습니다.';
-          setSaveMessage(message);
-        }
-      })();
-    },
-    [activeReservation, isEditing, draft, selectedAttendees, saveReservationMinutes]
-  );
-
-  useEffect(() => {
-    if (!activeReservation || !isEditing) return;
-    const timer = window.setInterval(() => {
-      const currentKey = JSON.stringify({
-        draft,
-        attendees: selectedAttendees.map((attendee) => attendee.id),
-      });
-      if (currentKey === lastSavedKeyRef.current) return;
-      saveDraft('auto');
-    }, AUTO_SAVE_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [activeReservation, isEditing, draft, selectedAttendees, saveDraft]);
+    })();
+  }, [activeReservation, isEditing, draft, selectedAttendees, saveReservationMinutes]);
 
   const internalAttendeeText = selectedAttendees.map((attendee) => attendee.name).join(', ');
   const lockByOther = Boolean(activeLock && activeLock.holderUserId !== viewerId);
@@ -629,7 +589,7 @@ function MinutesPage() {
           <button
             className="page-mode-button"
             type="button"
-            onClick={() => saveDraft('manual')}
+            onClick={saveDraft}
             disabled={!isEditing}
             style={{
               whiteSpace: 'nowrap',

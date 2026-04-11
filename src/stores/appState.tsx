@@ -3,15 +3,22 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import type { ReservationDraft, ReservationStatus, TimetableReservation } from '../components';
 import {
   changePassword as changePasswordApi,
+  createReservationLabel as createReservationLabelApi,
   createCompanyUser,
   createReservation as createReservationApi,
+  deleteCompanyUser as deleteCompanyUserApi,
+  deleteReservationLabel as deleteReservationLabelApi,
   deleteReservation as deleteReservationApi,
   getReservationMinutes as getReservationMinutesApi,
   listCompanyUsers,
+  listReservationLabels as listReservationLabelsApi,
   listRooms,
   listReservations,
+  setUserAdmin as setUserAdminApi,
+  type LabelDto,
   type ReservationDto,
   type RoomDto,
+  updateReservationLabel as updateReservationLabelApi,
   updateReservationMinutes,
 } from '../api';
 
@@ -20,6 +27,7 @@ type AppUser = {
   name: string;
   email: string;
   department: string;
+  isAdmin: boolean;
   password?: string;
 };
 
@@ -35,6 +43,12 @@ type AppRoom = {
   capacity: number;
 };
 
+type NewUserInput = {
+  id: string;
+  name: string;
+  department: string;
+};
+
 type AppStateContextValue = {
   userEmail: string;
   isLoggedIn: boolean;
@@ -42,15 +56,23 @@ type AppStateContextValue = {
   rooms: AppRoom[];
   reservations: AppReservation[];
   reservationLabels: string[];
+  currentUser: AppUser | null;
+  isCurrentUserAdmin: boolean;
   setUserEmail: (email: string) => void;
-  addUser: (user: AppUser) => void;
+  addUser: (user: NewUserInput) => Promise<void>;
+  removeUser: (userId: string) => Promise<void>;
+  setUserAdmin: (userId: string, isAdmin: boolean) => Promise<void>;
+  addReservationLabel: (name: string) => Promise<void>;
+  renameReservationLabel: (oldName: string, newName: string) => Promise<void>;
+  removeReservationLabel: (name: string) => Promise<void>;
+  reloadReservations: () => Promise<void>;
   logout: () => void;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  addReservation: (draft: ReservationDraft, room: string) => void;
+  addReservation: (draft: ReservationDraft, room: string) => Promise<void>;
   updateReservation: (
     reservationId: string,
     payload: Omit<ReservationStatus, 'id' | 'creatorEmail'>
-  ) => void;
+  ) => Promise<void>;
   saveReservationMinutes: (
     reservationId: string,
     payload: Omit<ReservationStatus, 'id' | 'creatorEmail' | 'creatorName'>
@@ -62,8 +84,7 @@ type AppStateContextValue = {
 const AppStateContext = createContext<AppStateContextValue | null>(null);
 
 const SESSION_KEY = 'roombook_session_email';
-const RESERVATION_LABELS_KEY = 'roombook_reservation_labels';
-const DEFAULT_RESERVATION_LABELS = ['AIDA', '부동산', 'KETI'];
+const DEFAULT_RESERVATION_LABELS = ['없음', 'AIDA', '부동산', 'KETI'];
 
 function mapReservationDtoToAppReservation(
   item: ReservationDto,
@@ -107,34 +128,25 @@ function AppStateProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [rooms, setRooms] = useState<AppRoom[]>([]);
   const [reservations, setReservations] = useState<AppReservation[]>([]);
-  const [reservationLabels] = useState<string[]>(() => {
-    const saved = window.localStorage.getItem(RESERVATION_LABELS_KEY);
-    const parsed = saved ? JSON.parse(saved) : null;
-    if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
-      return parsed;
-    }
-    return DEFAULT_RESERVATION_LABELS;
-  });
-
-  useEffect(() => {
-    window.localStorage.setItem(RESERVATION_LABELS_KEY, JSON.stringify(reservationLabels));
-  }, [reservationLabels]);
+  const [reservationLabels, setReservationLabels] = useState<string[]>(DEFAULT_RESERVATION_LABELS);
 
   useEffect(() => {
     if (!userEmail) {
       setUsers([]);
       setRooms([]);
       setReservations([]);
+      setReservationLabels(DEFAULT_RESERVATION_LABELS);
       return;
     }
 
     let mounted = true;
     const hydrate = async () => {
       try {
-        const [nextUsers, nextReservations, nextRooms] = await Promise.all([
+        const [nextUsers, nextReservations, nextRooms, nextLabels] = await Promise.all([
           listCompanyUsers(),
           listReservations(),
           listRooms(),
+          listReservationLabelsApi(),
         ]);
         if (!mounted) return;
         const mappedUsers: AppUser[] = nextUsers.map((user) => ({
@@ -142,6 +154,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
           name: user.name,
           email: user.email,
           department: user.department ?? '',
+          isAdmin: Boolean(user.is_admin),
         }));
         setUsers(mappedUsers);
         setRooms(
@@ -154,11 +167,16 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         setReservations(
           nextReservations.map((item) => mapReservationDtoToAppReservation(item, mappedUsers))
         );
+        const labelNames = nextLabels
+          .map((item: LabelDto) => item.name)
+          .filter((item) => item.trim());
+        setReservationLabels(labelNames.length > 0 ? labelNames : DEFAULT_RESERVATION_LABELS);
       } catch {
         if (!mounted) return;
         setUsers([]);
         setRooms([]);
         setReservations([]);
+        setReservationLabels(DEFAULT_RESERVATION_LABELS);
       }
     };
 
@@ -176,6 +194,11 @@ function AppStateProvider({ children }: { children: ReactNode }) {
       rooms,
       reservations,
       reservationLabels,
+      currentUser:
+        users.find((user) => user.email.toLowerCase() === userEmail.toLowerCase()) ?? null,
+      isCurrentUserAdmin:
+        users.find((user) => user.email.toLowerCase() === userEmail.toLowerCase())?.isAdmin ??
+        false,
       setUserEmail: (email) => {
         const normalized = email.trim().toLowerCase();
         setUserEmailState(normalized);
@@ -185,26 +208,85 @@ function AppStateProvider({ children }: { children: ReactNode }) {
           window.localStorage.removeItem(SESSION_KEY);
         }
       },
-      addUser: (user) => {
-        void (async () => {
-          const payload = {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            department: user.department,
-            password: user.password ?? 'ecminer',
-          };
-          await createCompanyUser(payload);
-          const nextUsers = await listCompanyUsers();
-          setUsers(
-            nextUsers.map((item) => ({
-              id: item.id,
-              name: item.name,
-              email: item.email,
-              department: item.department ?? '',
-            }))
-          );
-        })();
+      addUser: async (user) => {
+        const payload = {
+          id: user.id,
+          name: user.name,
+          department: user.department,
+        };
+        await createCompanyUser(payload);
+        const nextUsers = await listCompanyUsers();
+        setUsers(
+          nextUsers.map((item) => ({
+            id: item.id,
+            name: item.name,
+            email: item.email,
+            department: item.department ?? '',
+            isAdmin: Boolean(item.is_admin),
+          }))
+        );
+      },
+      removeUser: async (userId) => {
+        await deleteCompanyUserApi(userId);
+        const nextUsers = await listCompanyUsers();
+        setUsers(
+          nextUsers.map((item) => ({
+            id: item.id,
+            name: item.name,
+            email: item.email,
+            department: item.department ?? '',
+            isAdmin: Boolean(item.is_admin),
+          }))
+        );
+      },
+      setUserAdmin: async (userId, isAdmin) => {
+        await setUserAdminApi(userId, isAdmin);
+        const nextUsers = await listCompanyUsers();
+        setUsers(
+          nextUsers.map((item) => ({
+            id: item.id,
+            name: item.name,
+            email: item.email,
+            department: item.department ?? '',
+            isAdmin: Boolean(item.is_admin),
+          }))
+        );
+      },
+      addReservationLabel: async (name) => {
+        await createReservationLabelApi(name);
+        const nextLabels = await listReservationLabelsApi();
+        const labelNames = nextLabels.map((item) => item.name).filter((item) => item.trim());
+        setReservationLabels(labelNames.length > 0 ? labelNames : DEFAULT_RESERVATION_LABELS);
+      },
+      renameReservationLabel: async (oldName, newName) => {
+        await updateReservationLabelApi(oldName, newName);
+        const [nextLabels, nextReservations] = await Promise.all([
+          listReservationLabelsApi(),
+          listReservations(),
+        ]);
+        const labelNames = nextLabels.map((item) => item.name).filter((item) => item.trim());
+        setReservationLabels(labelNames.length > 0 ? labelNames : DEFAULT_RESERVATION_LABELS);
+        setReservations(
+          nextReservations.map((item) => mapReservationDtoToAppReservation(item, users))
+        );
+      },
+      removeReservationLabel: async (name) => {
+        await deleteReservationLabelApi(name);
+        const [nextLabels, nextReservations] = await Promise.all([
+          listReservationLabelsApi(),
+          listReservations(),
+        ]);
+        const labelNames = nextLabels.map((item) => item.name).filter((item) => item.trim());
+        setReservationLabels(labelNames.length > 0 ? labelNames : DEFAULT_RESERVATION_LABELS);
+        setReservations(
+          nextReservations.map((item) => mapReservationDtoToAppReservation(item, users))
+        );
+      },
+      reloadReservations: async () => {
+        const nextReservations = await listReservations();
+        setReservations(
+          nextReservations.map((item) => mapReservationDtoToAppReservation(item, users))
+        );
       },
       logout: () => {
         setUserEmailState('');
@@ -212,6 +294,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         setUsers([]);
         setRooms([]);
         setReservations([]);
+        setReservationLabels(DEFAULT_RESERVATION_LABELS);
       },
       changePassword: async (currentPassword, newPassword) => {
         await changePasswordApi({
@@ -219,43 +302,39 @@ function AppStateProvider({ children }: { children: ReactNode }) {
           new_password: newPassword,
         });
       },
-      addReservation: (draft, roomId) => {
-        void (async () => {
-          const created = await createReservationApi({
-            room_id: roomId,
-            title: draft.title,
-            label: draft.label,
-            start_at: toIsoString(draft.start),
-            end_at: toIsoString(draft.end),
-            attendees: draft.attendees.map((attendee) => attendee.id),
-            external_attendees: draft.externalAttendees,
-            agenda: draft.agenda,
-            meeting_content: draft.meetingContent,
-            meeting_result: draft.meetingResult,
-            minutes_attachment: draft.minutesAttachment,
-          });
-          setReservations((prev) => [mapReservationDtoToAppReservation(created, users), ...prev]);
-        })();
+      addReservation: async (draft, roomId) => {
+        const created = await createReservationApi({
+          room_id: roomId,
+          title: draft.title,
+          label: draft.label,
+          start_at: toIsoString(draft.start),
+          end_at: toIsoString(draft.end),
+          attendees: draft.attendees.map((attendee) => attendee.id),
+          external_attendees: draft.externalAttendees,
+          agenda: draft.agenda,
+          meeting_content: draft.meetingContent,
+          meeting_result: draft.meetingResult,
+          minutes_attachment: draft.minutesAttachment,
+        });
+        setReservations((prev) => [mapReservationDtoToAppReservation(created, users), ...prev]);
       },
-      updateReservation: (id, payload) => {
-        void (async () => {
-          const updated = await updateReservationMinutes(id, {
-            title: payload.title,
-            label: payload.label,
-            start_at: toIsoString(payload.start),
-            end_at: toIsoString(payload.end),
-            attendees: payload.attendees.map((attendee) => attendee.id),
-            external_attendees: payload.externalAttendees,
-            agenda: payload.agenda,
-            meeting_content: payload.meetingContent,
-            meeting_result: payload.meetingResult,
-            minutes_attachment: payload.minutesAttachment,
-          });
-          const mapped = mapReservationDtoToAppReservation(updated, users);
-          setReservations((prev) =>
-            prev.map((reservation) => (reservation.id === id ? mapped : reservation))
-          );
-        })();
+      updateReservation: async (id, payload) => {
+        const updated = await updateReservationMinutes(id, {
+          title: payload.title,
+          label: payload.label,
+          start_at: toIsoString(payload.start),
+          end_at: toIsoString(payload.end),
+          attendees: payload.attendees.map((attendee) => attendee.id),
+          external_attendees: payload.externalAttendees,
+          agenda: payload.agenda,
+          meeting_content: payload.meetingContent,
+          meeting_result: payload.meetingResult,
+          minutes_attachment: payload.minutesAttachment,
+        });
+        const mapped = mapReservationDtoToAppReservation(updated, users);
+        setReservations((prev) =>
+          prev.map((reservation) => (reservation.id === id ? mapped : reservation))
+        );
       },
       saveReservationMinutes: async (id, payload) => {
         const updated = await updateReservationMinutes(id, {
@@ -312,4 +391,4 @@ function useAppState() {
 }
 
 export { AppStateProvider, useAppState };
-export type { AppReservation, AppRoom, AppUser };
+export type { AppReservation, AppRoom, AppUser, NewUserInput };
