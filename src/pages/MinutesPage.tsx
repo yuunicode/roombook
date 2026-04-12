@@ -12,10 +12,12 @@ import { useAppState, type AppReservation, type AppUser } from '../stores';
 import AppIcon from '../components/ui/AppIcon';
 import {
   acquireMinutesLock as acquireMinutesLockApi,
+  getMinutesLiveState as getMinutesLiveStateApi,
   getMinutesLock as getMinutesLockApi,
   releaseMinutesLock as releaseMinutesLockApi,
   suggestMinutesFromTranscript,
   transcribeChunk,
+  updateMinutesLiveState as updateMinutesLiveStateApi,
   type MinutesLockDto,
   type MinutesSuggestionResult,
 } from '../api';
@@ -43,10 +45,12 @@ type EditLock = {
 
 const LOCK_HEARTBEAT_MS = 3000;
 const LIVE_SYNC_MS = 5000;
-const SILENCE_FLUSH_MS = 900;
-const MIN_CHUNK_MS = 1200;
-const MAX_CHUNK_MS = 20000;
+const LIVE_TRANSCRIPT_SYNC_MS = 15000;
+const TRANSCRIBE_CHUNK_MS = 15000;
+const SILENCE_PARAGRAPH_MS = 1200;
 const AUDIO_LEVEL_THRESHOLD = 0.018;
+const MIN_TRANSCRIBE_CHUNK_BYTES = 12_000;
+const MIN_FINAL_CHUNK_BYTES = 4_000;
 const MAX_UNDO_HISTORY = 100;
 const MAX_BULLET_LEVEL = 4;
 const BULLET_SYMBOLS = ['•', '◦', '▪', '▫'] as const;
@@ -108,16 +112,26 @@ function mergeBulletPoints(existingText: string, suggestions: string[]) {
   return [existingText.trim(), ...appended].filter((chunk) => chunk.length > 0).join('\n');
 }
 
-function toBulletLines(items: string[]) {
-  return items
-    .map((item) =>
-      item
-        .trim()
-        .replace(/^(안건|주제|내용|결과)\s*:\s*/i, '')
-        .trim()
-    )
-    .filter((item) => item.length > 0)
-    .map((item) => `- ${item}`);
+function buildMinutesMarkdown(draft: MinutesDraft, internalAttendeeText: string) {
+  return [
+    `# ${draft.title || '회의록 제목'}`,
+    '',
+    `- 라벨: ${draft.label || '-'}`,
+    `- 날짜: ${draft.dateInput || '-'}`,
+    `- 시간: ${draft.startTimeInput || '-'} ~ ${draft.endTimeInput || '-'}`,
+    `- 내부 참석자: ${internalAttendeeText || '없음'}`,
+    `- 외부 참석자: ${draft.externalAttendees || '없음'}`,
+    '',
+    '## 주요 안건',
+    draft.agenda || '',
+    '',
+    '## 회의 내용',
+    draft.meetingContent || '',
+    '',
+    '## 회의 결과',
+    draft.meetingResult || '',
+    '',
+  ].join('\n');
 }
 
 function MinutesPage() {
@@ -160,26 +174,32 @@ function MinutesPage() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [transcriptText, setTranscriptText] = useState('');
+  const [isAutoRecordPanelOpen, setIsAutoRecordPanelOpen] = useState(false);
+  const [sharedIsRecording, setSharedIsRecording] = useState(false);
+  const [sharedRecorderName, setSharedRecorderName] = useState('');
+  const [sharedRecorderUserId, setSharedRecorderUserId] = useState('');
   const [summarySuggestion, setSummarySuggestion] = useState<MinutesSuggestionResult>({
     agenda: [],
     meeting_content: [],
     meeting_result: [],
   });
-  const [compareSection, setCompareSection] = useState<MinutesSectionKey | null>(null);
   const historyRef = useRef<MinutesDraft[]>([]);
   const lastSavedKeyRef = useRef('');
   const isSavingRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recorderIntervalRef = useRef<number | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const speakingRef = useRef(false);
   const lastVoiceAtRef = useRef(0);
-  const lastChunkAtRef = useRef(0);
+  const insertParagraphBreakRef = useRef(false);
   const transcriptTextRef = useRef('');
   const transcriptQueueRef = useRef(Promise.resolve());
   const transcribePendingCountRef = useRef(0);
+  const pendingAudioChunksRef = useRef<Blob[]>([]);
+  const pendingAudioBytesRef = useRef(0);
 
   const agendaRef = useRef<HTMLTextAreaElement>(null);
   const meetingContentRef = useRef<HTMLTextAreaElement>(null);
@@ -234,6 +254,19 @@ function MinutesPage() {
       return false;
     }
   }, [readLock, reservationId, toEditLock]);
+
+  const syncLiveTranscript = useCallback(async () => {
+    if (!reservationId || isMockMode) return;
+    try {
+      const state = await getMinutesLiveStateApi(reservationId);
+      setTranscriptText(state.transcript_text ?? '');
+      setSharedIsRecording(state.is_recording);
+      setSharedRecorderName(state.updated_by_name ?? '');
+      setSharedRecorderUserId(state.updated_by_user_id ?? '');
+    } catch {
+      // 라이브 전사 동기화 실패는 UI 동작을 막지 않는다.
+    }
+  }, [isMockMode, reservationId]);
 
   useEffect(() => {
     if (!activeReservation || isEditing) {
@@ -314,6 +347,10 @@ function MinutesPage() {
 
   useEffect(() => {
     return () => {
+      if (recorderIntervalRef.current !== null) {
+        window.clearInterval(recorderIntervalRef.current);
+        recorderIntervalRef.current = null;
+      }
       if (rafIdRef.current !== null) {
         window.cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
@@ -552,18 +589,12 @@ function MinutesPage() {
   const lockTooltip = lockByOther ? `${activeLock?.holderName}가 수정하고있습니다.` : '';
 
   useEffect(() => {
-    if (!reservationId) return;
-    const sync = () => {
-      void (async () => {
-        if (isEditing) return;
-        const result = await getReservationMinutes(reservationId);
-        if (!result) return;
-        setMinutesReservation(result);
-      })();
-    };
-    sync();
-    const intervalId = window.setInterval(sync, LIVE_SYNC_MS);
-    return () => window.clearInterval(intervalId);
+    if (!reservationId || isEditing) return;
+    void (async () => {
+      const result = await getReservationMinutes(reservationId);
+      if (!result) return;
+      setMinutesReservation(result);
+    })();
   }, [getReservationMinutes, isEditing, reservationId]);
 
   useEffect(() => {
@@ -581,12 +612,28 @@ function MinutesPage() {
   }, [isEditing, readLock, reservationId]);
 
   useEffect(() => {
+    if (!reservationId || isMockMode) return;
+    const sync = () => {
+      void syncLiveTranscript();
+    };
+    sync();
+    const intervalId = window.setInterval(sync, LIVE_TRANSCRIPT_SYNC_MS);
+    return () => window.clearInterval(intervalId);
+  }, [isMockMode, reservationId, syncLiveTranscript]);
+
+  useEffect(() => {
     if (!isEditing) return;
     const intervalId = window.setInterval(() => {
       void persistDraft('silent');
     }, LIVE_SYNC_MS);
     return () => window.clearInterval(intervalId);
   }, [isEditing, persistDraft]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setIsAutoRecordPanelOpen(false);
+    }
+  }, [isEditing]);
 
   const handleEditToggle = () => {
     if (isEditing) {
@@ -610,26 +657,7 @@ function MinutesPage() {
     if (!activeReservation) return;
     const dateToken = formatDateToken(draft.dateInput, activeReservation.start);
     const baseName = `${dateToken}_${toMarkdownFilename(draft.title)}`;
-
-    const markdown = [
-      `# ${draft.title || '회의록 제목'}`,
-      '',
-      `- 라벨: ${draft.label || '-'}`,
-      `- 날짜: ${draft.dateInput || '-'}`,
-      `- 시간: ${draft.startTimeInput || '-'} ~ ${draft.endTimeInput || '-'}`,
-      `- 내부 참석자: ${internalAttendeeText || '없음'}`,
-      `- 외부 참석자: ${draft.externalAttendees || '없음'}`,
-      '',
-      '## 🧭 주요 안건',
-      draft.agenda || '',
-      '',
-      '## 📝 회의 내용',
-      draft.meetingContent || '',
-      '',
-      '## ✅ 회의 결과',
-      draft.meetingResult || '',
-      '',
-    ].join('\n');
+    const markdown = buildMinutesMarkdown(draft, internalAttendeeText);
 
     const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -638,112 +666,6 @@ function MinutesPage() {
     link.download = `${baseName}.md`;
     link.click();
     URL.revokeObjectURL(url);
-  };
-
-  const handleDownloadPdf = () => {
-    if (!activeReservation) return;
-    const dateToken = formatDateToken(draft.dateInput, activeReservation.start);
-    const baseName = `${dateToken}_${toMarkdownFilename(draft.title)}`;
-    const source = document.getElementById('minutes-page-export-root');
-    if (!source) return;
-
-    const openPrintFallback = () => {
-      const popup = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
-      if (!popup) {
-        setSaveMessage('PDF 저장 창을 열 수 없습니다. 팝업 차단을 확인하세요.');
-        return;
-      }
-      const copiedStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-        .map((node) => node.outerHTML)
-        .join('\n');
-      popup.document.open();
-      popup.document.write(`
-        <!doctype html>
-        <html lang="ko">
-          <head>
-            <meta charset="utf-8" />
-            <title>${baseName}.pdf</title>
-            ${copiedStyles}
-            <style>
-              body { margin: 0; background: #fff; }
-              .pdf-export-toolbar {
-                position: sticky; top: 0; z-index: 10; display: flex; justify-content: flex-end;
-                gap: 8px; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; background: #fff;
-              }
-              .pdf-export-button {
-                border: 1px solid #d0d5dd; background: #fff; color: #344054; border-radius: 8px;
-                height: 32px; padding: 0 12px; font-size: 13px; font-weight: 600; cursor: pointer;
-              }
-              #minutes-page-export-root { max-width: 960px; margin: 0 auto; padding: 24px 0 40px; }
-              @media print { .pdf-export-toolbar { display: none; } }
-            </style>
-          </head>
-          <body>
-            <div class="pdf-export-toolbar">
-              <button class="pdf-export-button" onclick="window.print()">PDF로 저장</button>
-              <button class="pdf-export-button" onclick="window.close()">닫기</button>
-            </div>
-            ${source.outerHTML}
-          </body>
-        </html>
-      `);
-      popup.document.close();
-      popup.focus();
-      setSaveMessage('PDF 저장창을 열었습니다.');
-    };
-
-    void (async () => {
-      try {
-        setSaveMessage('PDF 생성 중입니다...');
-        const [{ jsPDF }] = await Promise.all([import('jspdf')]);
-        const pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: 'a4',
-          compress: true,
-        });
-
-        const exportRoot = source.cloneNode(true) as HTMLElement;
-        exportRoot.style.maxWidth = '100%';
-        exportRoot.style.margin = '0';
-        exportRoot.style.padding = '0';
-
-        const sandbox = document.createElement('div');
-        sandbox.style.position = 'fixed';
-        sandbox.style.left = '-99999px';
-        sandbox.style.top = '0';
-        sandbox.style.width = '794px';
-        sandbox.style.background = '#ffffff';
-        sandbox.appendChild(exportRoot);
-        document.body.appendChild(sandbox);
-
-        try {
-          await pdf.html(exportRoot, {
-            margin: [8, 8, 8, 8],
-            autoPaging: 'text',
-            html2canvas: {
-              backgroundColor: '#ffffff',
-              scale: 1,
-              useCORS: true,
-              logging: false,
-            },
-          });
-        } finally {
-          sandbox.remove();
-        }
-
-        pdf.save(`${baseName}.pdf`);
-        setSaveMessage('PDF 다운로드가 시작되었습니다.');
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'PDF 저장에 실패했습니다.';
-        if (String(message).toLowerCase().includes('color')) {
-          openPrintFallback();
-          return;
-        }
-        setSaveMessage(`PDF 저장 실패: ${message}`);
-        window.alert(`PDF 저장에 실패했습니다.\n${message}`);
-      }
-    })();
   };
 
   const blobToBase64 = async (blob: Blob): Promise<string> => {
@@ -759,6 +681,10 @@ function MinutesPage() {
   };
 
   const stopAudioResources = useCallback(() => {
+    if (recorderIntervalRef.current !== null) {
+      window.clearInterval(recorderIntervalRef.current);
+      recorderIntervalRef.current = null;
+    }
     if (rafIdRef.current !== null) {
       window.cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
@@ -770,43 +696,83 @@ function MinutesPage() {
     mediaStreamRef.current = null;
   }, []);
 
-  const queueTranscriptionChunk = useCallback(async (blob: Blob) => {
-    if (blob.size === 0) return;
-    transcriptQueueRef.current = transcriptQueueRef.current
-      .then(async () => {
-        transcribePendingCountRef.current += 1;
-        setIsTranscribing(true);
-        const base64 = await blobToBase64(blob);
-        const result = await transcribeChunk({
-          audio_base64: base64,
-          mime_type: blob.type || 'audio/webm',
-          previous_text: transcriptTextRef.current.slice(-1200),
+  const queueTranscriptionChunk = useCallback(
+    async (blob: Blob) => {
+      if (blob.size === 0 || !reservationId) return;
+      transcriptQueueRef.current = transcriptQueueRef.current
+        .then(async () => {
+          transcribePendingCountRef.current += 1;
+          setIsTranscribing(true);
+          const base64 = await blobToBase64(blob);
+          const result = await transcribeChunk({
+            audio_base64: base64,
+            mime_type: blob.type || 'audio/webm',
+            previous_text: transcriptTextRef.current.slice(-1200),
+          });
+          const nextText = result.text.trim();
+          if (!nextText) return;
+          const baseText = transcriptTextRef.current.trim();
+          const separator = insertParagraphBreakRef.current ? '\n\n' : '\n';
+          const mergedText = baseText ? `${baseText}${separator}${nextText}` : nextText;
+          insertParagraphBreakRef.current = false;
+          const liveState = await updateMinutesLiveStateApi(reservationId, {
+            transcript_text: mergedText,
+          });
+          setTranscriptText(liveState.transcript_text ?? '');
+          setSharedIsRecording(liveState.is_recording);
+          setSharedRecorderName(liveState.updated_by_name ?? '');
+          setSharedRecorderUserId(liveState.updated_by_user_id ?? '');
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : '전사 중 오류가 발생했습니다.';
+          if (message.includes('Audio file might be corrupted or unsupported')) {
+            setSaveMessage('짧은 음성 조각은 건너뛰고 다음 전사를 계속합니다.');
+            return;
+          }
+          setSaveMessage(message);
+        })
+        .finally(() => {
+          transcribePendingCountRef.current = Math.max(0, transcribePendingCountRef.current - 1);
+          if (transcribePendingCountRef.current === 0) {
+            setIsTranscribing(false);
+          }
         });
-        const nextText = result.text.trim();
-        if (!nextText) return;
-        setTranscriptText((prev) => (prev ? `${prev}\n${nextText}` : nextText));
-      })
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : '전사 중 오류가 발생했습니다.';
-        setSaveMessage(message);
-      })
-      .finally(() => {
-        transcribePendingCountRef.current = Math.max(0, transcribePendingCountRef.current - 1);
-        if (transcribePendingCountRef.current === 0) {
-          setIsTranscribing(false);
-        }
+      await transcriptQueueRef.current;
+    },
+    [reservationId]
+  );
+
+  const flushPendingChunks = useCallback(
+    (force: boolean) => {
+      const totalBytes = pendingAudioBytesRef.current;
+      const minBytes = force ? MIN_FINAL_CHUNK_BYTES : MIN_TRANSCRIBE_CHUNK_BYTES;
+      if (totalBytes < minBytes) {
+        return;
+      }
+      const merged = new Blob(pendingAudioChunksRef.current, {
+        type: mediaRecorderRef.current?.mimeType || 'audio/webm',
       });
-    await transcriptQueueRef.current;
-  }, []);
+      pendingAudioChunksRef.current = [];
+      pendingAudioBytesRef.current = 0;
+      void queueTranscriptionChunk(merged);
+    },
+    [queueTranscriptionChunk]
+  );
 
   const startMockRecording = useCallback(() => {
+    if (!isEditing) {
+      setSaveMessage('수정 모드에서만 녹음을 시작할 수 있습니다.');
+      return;
+    }
     setIsRecording(true);
     setIsTranscribing(false);
     setSaveMessage('모의 녹음을 시작했습니다. 종료 후 전사본이 생성됩니다.');
-  }, []);
+  }, [isEditing]);
 
   const startSingleRecording = useCallback(
     async (stream: MediaStream) => {
+      pendingAudioChunksRef.current = [];
+      pendingAudioBytesRef.current = 0;
       const recorder = new MediaRecorder(stream, {
         mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
           ? 'audio/webm;codecs=opus'
@@ -814,10 +780,28 @@ function MinutesPage() {
       });
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          void queueTranscriptionChunk(event.data);
+          pendingAudioChunksRef.current.push(event.data);
+          pendingAudioBytesRef.current += event.data.size;
+          flushPendingChunks(false);
         }
       };
       recorder.onstop = () => {
+        flushPendingChunks(true);
+        if (reservationId) {
+          void (async () => {
+            try {
+              const liveState = await updateMinutesLiveStateApi(reservationId, {
+                is_recording: false,
+              });
+              setSharedIsRecording(liveState.is_recording);
+              setSharedRecorderName(liveState.updated_by_name ?? '');
+              setSharedRecorderUserId(liveState.updated_by_user_id ?? '');
+              setTranscriptText(liveState.transcript_text ?? '');
+            } catch {
+              // 이탈 상황에서도 로컬 종료는 계속 진행한다.
+            }
+          })();
+        }
         stopAudioResources();
         mediaRecorderRef.current = null;
         setIsRecording(false);
@@ -837,7 +821,7 @@ function MinutesPage() {
       speakingRef.current = false;
       const now = performance.now();
       lastVoiceAtRef.current = now;
-      lastChunkAtRef.current = now;
+      insertParagraphBreakRef.current = false;
 
       const buffer = new Uint8Array(analyser.fftSize);
       const tick = () => {
@@ -859,29 +843,52 @@ function MinutesPage() {
         }
 
         const silenceElapsed = ts - lastVoiceAtRef.current;
-        const chunkElapsed = ts - lastChunkAtRef.current;
-        const shouldFlushBySilence =
-          speakingRef.current && silenceElapsed >= SILENCE_FLUSH_MS && chunkElapsed >= MIN_CHUNK_MS;
-        const shouldFlushByMax = chunkElapsed >= MAX_CHUNK_MS;
-
-        if (shouldFlushBySilence || shouldFlushByMax) {
-          activeRecorder.requestData();
+        if (speakingRef.current && silenceElapsed >= SILENCE_PARAGRAPH_MS) {
+          insertParagraphBreakRef.current = true;
           speakingRef.current = false;
-          lastChunkAtRef.current = ts;
         }
 
         rafIdRef.current = window.requestAnimationFrame(tick);
       };
 
       recorder.start();
+      recorderIntervalRef.current = window.setInterval(() => {
+        const activeRecorder = mediaRecorderRef.current;
+        if (!activeRecorder || activeRecorder.state !== 'recording') return;
+        activeRecorder.requestData();
+      }, TRANSCRIBE_CHUNK_MS);
       rafIdRef.current = window.requestAnimationFrame(tick);
       setIsRecording(true);
-      setSaveMessage('녹음을 시작했습니다. 묵음이 감지되면 전사본이 자동 반영됩니다.');
+      setSaveMessage('녹음을 시작했습니다. 15초마다 전사본이 자동 반영됩니다.');
+      if (reservationId) {
+        try {
+          const liveState = await updateMinutesLiveStateApi(reservationId, {
+            is_recording: true,
+          });
+          setSharedIsRecording(liveState.is_recording);
+          setSharedRecorderName(liveState.updated_by_name ?? '');
+          setSharedRecorderUserId(liveState.updated_by_user_id ?? '');
+          setTranscriptText(liveState.transcript_text ?? '');
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : '녹음 상태 동기화에 실패했습니다.';
+          setSaveMessage(message);
+        }
+      }
     },
-    [queueTranscriptionChunk, stopAudioResources]
+    [flushPendingChunks, reservationId, stopAudioResources]
   );
 
   const handleStartRecording = useCallback(() => {
+    if (!isEditing) {
+      setSaveMessage('수정 모드에서만 녹음을 시작할 수 있습니다.');
+      return;
+    }
+    const recordingByOther = sharedIsRecording && sharedRecorderUserId !== viewerId;
+    if (!isMockMode && recordingByOther) {
+      setSaveMessage(`${sharedRecorderName || '다른 사용자'}가 녹음 중입니다.`);
+      return;
+    }
     if (isMockMode) {
       startMockRecording();
       return;
@@ -895,7 +902,16 @@ function MinutesPage() {
         setSaveMessage(`녹음 시작 실패: ${message}`);
       }
     })();
-  }, [isMockMode, startMockRecording, startSingleRecording]);
+  }, [
+    isEditing,
+    isMockMode,
+    sharedIsRecording,
+    sharedRecorderName,
+    sharedRecorderUserId,
+    startMockRecording,
+    startSingleRecording,
+    viewerId,
+  ]);
 
   const handleStopRecording = useCallback(() => {
     if (isMockMode) {
@@ -908,8 +924,23 @@ function MinutesPage() {
       mediaRecorderRef.current.requestData();
     }
     mediaRecorderRef.current?.stop();
+    if (reservationId) {
+      void (async () => {
+        try {
+          const liveState = await updateMinutesLiveStateApi(reservationId, {
+            is_recording: false,
+          });
+          setSharedIsRecording(liveState.is_recording);
+          setSharedRecorderName(liveState.updated_by_name ?? '');
+          setSharedRecorderUserId(liveState.updated_by_user_id ?? '');
+          setTranscriptText(liveState.transcript_text ?? '');
+        } catch {
+          // stop 동작은 유지한다.
+        }
+      })();
+    }
     setSaveMessage('녹음을 종료하는 중입니다...');
-  }, [isMockMode]);
+  }, [isMockMode, reservationId]);
 
   const handleGenerateMinutes = useCallback(() => {
     void (async () => {
@@ -952,86 +983,41 @@ function MinutesPage() {
     })();
   }, [draft.agenda, draft.meetingContent, draft.meetingResult, isMockMode, transcriptText]);
 
-  const openCompareSection = useCallback((section: MinutesSectionKey) => {
-    setCompareSection(section);
-  }, []);
-
-  const applyMergedSuggestion = useCallback(() => {
-    if (!compareSection) return;
-    if (!isEditing) {
-      setSaveMessage('수정 모드에서만 반영할 수 있습니다.');
-      return;
-    }
-    if (compareSection === 'agenda') {
-      updateDraft({ agenda: mergeBulletPoints(draft.agenda, summarySuggestion.agenda) });
-      setCompareSection(null);
-      return;
-    }
-    if (compareSection === 'meeting_content') {
+  const applySuggestionForSection = useCallback(
+    (section: MinutesSectionKey) => {
+      if (!isEditing) {
+        setSaveMessage('수정 모드에서만 반영할 수 있습니다.');
+        return;
+      }
+      if (section === 'agenda') {
+        updateDraft({ agenda: mergeBulletPoints(draft.agenda, summarySuggestion.agenda) });
+        setSaveMessage('주요 안건에 AI 제안을 반영했습니다.');
+        return;
+      }
+      if (section === 'meeting_content') {
+        updateDraft({
+          meetingContent: mergeBulletPoints(
+            draft.meetingContent,
+            summarySuggestion.meeting_content
+          ),
+        });
+        setSaveMessage('회의 내용에 AI 제안을 반영했습니다.');
+        return;
+      }
       updateDraft({
-        meetingContent: mergeBulletPoints(draft.meetingContent, summarySuggestion.meeting_content),
+        meetingResult: mergeBulletPoints(draft.meetingResult, summarySuggestion.meeting_result),
       });
-      setCompareSection(null);
-      return;
-    }
-    updateDraft({
-      meetingResult: mergeBulletPoints(draft.meetingResult, summarySuggestion.meeting_result),
-    });
-    setCompareSection(null);
-  }, [
-    compareSection,
-    draft.agenda,
-    draft.meetingContent,
-    draft.meetingResult,
-    isEditing,
-    summarySuggestion,
-    updateDraft,
-  ]);
-
-  const applyReplaceWithAi = useCallback(() => {
-    if (!compareSection) return;
-    if (!isEditing) {
-      setSaveMessage('수정 모드에서만 반영할 수 있습니다.');
-      return;
-    }
-    if (compareSection === 'agenda') {
-      updateDraft({ agenda: toBulletLines(summarySuggestion.agenda).join('\n') });
-      setCompareSection(null);
-      return;
-    }
-    if (compareSection === 'meeting_content') {
-      updateDraft({ meetingContent: toBulletLines(summarySuggestion.meeting_content).join('\n') });
-      setCompareSection(null);
-      return;
-    }
-    updateDraft({ meetingResult: toBulletLines(summarySuggestion.meeting_result).join('\n') });
-    setCompareSection(null);
-  }, [compareSection, isEditing, summarySuggestion, updateDraft]);
-
-  const compareOriginalText =
-    compareSection === 'agenda'
-      ? draft.agenda
-      : compareSection === 'meeting_content'
-        ? draft.meetingContent
-        : compareSection === 'meeting_result'
-          ? draft.meetingResult
-          : '';
-  const compareAiText =
-    compareSection === 'agenda'
-      ? toBulletLines(summarySuggestion.agenda).join('\n')
-      : compareSection === 'meeting_content'
-        ? toBulletLines(summarySuggestion.meeting_content).join('\n')
-        : compareSection === 'meeting_result'
-          ? toBulletLines(summarySuggestion.meeting_result).join('\n')
-          : '';
-  const compareMergedText =
-    compareSection === 'agenda'
-      ? mergeBulletPoints(draft.agenda, summarySuggestion.agenda)
-      : compareSection === 'meeting_content'
-        ? mergeBulletPoints(draft.meetingContent, summarySuggestion.meeting_content)
-        : compareSection === 'meeting_result'
-          ? mergeBulletPoints(draft.meetingResult, summarySuggestion.meeting_result)
-          : '';
+      setSaveMessage('회의 결과에 AI 제안을 반영했습니다.');
+    },
+    [
+      draft.agenda,
+      draft.meetingContent,
+      draft.meetingResult,
+      isEditing,
+      summarySuggestion,
+      updateDraft,
+    ]
+  );
 
   const handleGoBack = () => {
     if (window.history.length > 1) {
@@ -1059,12 +1045,16 @@ function MinutesPage() {
     );
   }
 
+  const showAutoRecordPanel = isEditing && isAutoRecordPanelOpen;
+
   return (
     <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px 0 40px' }}>
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 340px)',
+          gridTemplateColumns: showAutoRecordPanel
+            ? 'minmax(0, 1fr) minmax(300px, 340px)'
+            : 'minmax(0, 1fr)',
           gap: '16px',
           alignItems: 'start',
         }}
@@ -1151,27 +1141,6 @@ function MinutesPage() {
               >
                 <AppIcon name="download" style={{ width: '14px', height: '14px' }} />
                 마크다운 저장
-              </button>
-              <button
-                className="page-mode-button"
-                type="button"
-                onClick={handleDownloadPdf}
-                style={{
-                  whiteSpace: 'nowrap',
-                  background: 'rgba(16, 18, 24, 0.08)',
-                  color: '#6b563e',
-                  border: '1px solid rgba(107, 86, 62, 0.22)',
-                  borderRadius: '8px',
-                  padding: '0 10px',
-                  height: '28px',
-                  fontSize: '12px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                <AppIcon name="download" style={{ width: '14px', height: '14px' }} />
-                PDF 저장
               </button>
               <button
                 className="page-mode-button"
@@ -1287,6 +1256,32 @@ function MinutesPage() {
                 />
               </div>
             </div>
+
+            {isEditing && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+                <button
+                  className="page-mode-button"
+                  type="button"
+                  onClick={() => setIsAutoRecordPanelOpen((prev) => !prev)}
+                  style={{
+                    whiteSpace: 'nowrap',
+                    background: isAutoRecordPanelOpen
+                      ? 'rgba(36, 99, 235, 0.12)'
+                      : 'rgba(16, 18, 24, 0.08)',
+                    color: isAutoRecordPanelOpen ? '#1d4ed8' : '#6b563e',
+                    border: `1px solid ${isAutoRecordPanelOpen ? 'rgba(36, 99, 235, 0.35)' : 'rgba(107, 86, 62, 0.22)'}`,
+                    borderRadius: '8px',
+                    padding: '0 10px',
+                    height: '28px',
+                    fontSize: '12px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  {isAutoRecordPanelOpen ? '회의 자동기록 닫기' : '회의 자동기록'}
+                </button>
+              </div>
+            )}
 
             <div className="status-info-group" style={{ marginBottom: '16px' }}>
               <label className="status-info-label">내부 참석자</label>
@@ -1454,234 +1449,230 @@ function MinutesPage() {
             </div>
           </section>
         </div>
-        <aside
-          style={{
-            position: 'sticky',
-            top: '16px',
-            background: '#ffffff',
-            border: '1px solid var(--border)',
-            borderRadius: '12px',
-            padding: '14px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '12px',
-          }}
-        >
-          <div>
-            <h3 style={{ margin: 0, fontSize: '14px' }}>녹음/자동 전사</h3>
-            <p style={{ margin: '4px 0 0', color: 'var(--text-soft)', fontSize: '12px' }}>
-              {isMockMode
-                ? '모의 모드 (백엔드 호출 없음)'
-                : '묵음 감지 시 반영 + 종료 시 최종 반영 (gpt-4o-mini-transcribe)'}
-            </p>
-          </div>
-          <label
+        {showAutoRecordPanel && (
+          <aside
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '12px',
-              color: 'var(--text-soft)',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={isMockMode}
-              disabled={isRecording || isTranscribing}
-              onChange={(event) => setIsMockMode(event.target.checked)}
-            />
-            모의 모드 사용
-          </label>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            {!isRecording ? (
-              <button className="nav-menu-item" type="button" onClick={handleStartRecording}>
-                녹음 시작
-              </button>
-            ) : (
-              <button className="nav-menu-item" type="button" onClick={handleStopRecording}>
-                녹음 중지
-              </button>
-            )}
-            <button
-              className="nav-menu-item"
-              type="button"
-              onClick={() => setTranscriptText('')}
-              disabled={isRecording || isTranscribing}
-            >
-              전사 초기화
-            </button>
-          </div>
-          <div
-            style={{
-              minHeight: '140px',
-              maxHeight: '220px',
-              overflowY: 'auto',
-              background: '#fafafb',
+              position: 'sticky',
+              top: '16px',
+              background: '#ffffff',
               border: '1px solid var(--border)',
-              borderRadius: '8px',
-              padding: '10px',
-              fontSize: '12px',
-              lineHeight: 1.5,
-              whiteSpace: 'pre-wrap',
-            }}
-          >
-            {transcriptText || '녹음을 시작하면 일정 주기마다 전사 텍스트가 표시됩니다.'}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', color: 'var(--text-soft)' }}>
-              {isTranscribing
-                ? '전사 처리 중...'
-                : isRecording
-                  ? isMockMode
-                    ? '모의 녹음 중'
-                    : '녹음 중'
-                  : '대기 중'}
-            </span>
-            <button
-              className="linear-primary-button"
-              type="button"
-              onClick={handleGenerateMinutes}
-              disabled={
-                isRecording || isTranscribing || isGeneratingSummary || !transcriptText.trim()
-              }
-              style={{ width: 'auto', padding: '0 12px', height: '30px' }}
-            >
-              {isGeneratingSummary ? '생성 중...' : '회의록 자동생성'}
-            </button>
-          </div>
-          <div
-            style={{
-              borderTop: '1px dashed var(--border)',
-              paddingTop: '10px',
+              borderRadius: '12px',
+              padding: '14px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '10px',
+              gap: '12px',
             }}
           >
             <div>
-              <div
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-              >
-                <strong style={{ fontSize: '12px' }}>[주요 안건] 제안</strong>
+              <h3 style={{ margin: 0, fontSize: '14px' }}>[회의 자동기록]</h3>
+              <p style={{ margin: '4px 0 0', color: 'var(--text-soft)', fontSize: '12px' }}>
+                {isMockMode
+                  ? '모의 모드 (백엔드 호출 없음)'
+                  : '공유 전사 패널 · 묵음 감지 시 반영 + 종료 시 최종 반영 (gpt-4o-mini-transcribe)'}
+              </p>
+            </div>
+            <label
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '12px',
+                color: 'var(--text-soft)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={isMockMode}
+                disabled={isRecording || isTranscribing}
+                onChange={(event) => setIsMockMode(event.target.checked)}
+              />
+              모의 모드 사용
+            </label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {!isRecording ? (
                 <button
                   className="nav-menu-item"
                   type="button"
-                  onClick={() => openCompareSection('agenda')}
+                  onClick={handleStartRecording}
+                  disabled={
+                    !isMockMode &&
+                    (!isEditing || (sharedIsRecording && sharedRecorderUserId !== viewerId))
+                  }
+                  style={{
+                    height: '34px',
+                    padding: '0 12px',
+                    borderColor: '#d92d20',
+                    background: isRecording ? '#b42318' : '#d92d20',
+                    color: '#ffffff',
+                  }}
                 >
-                  반영
+                  녹음 버튼
                 </button>
-              </div>
-              <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
-                {summarySuggestion.agenda.map((item, index) => (
-                  <li key={`agenda-${index}`}>{item}</li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <div
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-              >
-                <strong style={{ fontSize: '12px' }}>[회의 내용] 제안</strong>
+              ) : (
                 <button
                   className="nav-menu-item"
                   type="button"
-                  onClick={() => openCompareSection('meeting_content')}
+                  onClick={handleStopRecording}
+                  style={{
+                    height: '34px',
+                    padding: '0 12px',
+                    borderColor: '#b42318',
+                    background: '#b42318',
+                    color: '#ffffff',
+                  }}
                 >
-                  반영
+                  녹음 중지
                 </button>
-              </div>
-              <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
-                {summarySuggestion.meeting_content.map((item, index) => (
-                  <li key={`content-${index}`}>{item}</li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <div
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              )}
+              <button
+                className="nav-menu-item"
+                type="button"
+                onClick={() => {
+                  if (isMockMode) {
+                    setTranscriptText('');
+                    return;
+                  }
+                  if (!isEditing || !reservationId) {
+                    setSaveMessage('수정 모드에서만 전사를 초기화할 수 있습니다.');
+                    return;
+                  }
+                  void (async () => {
+                    try {
+                      const liveState = await updateMinutesLiveStateApi(reservationId, {
+                        transcript_text: '',
+                      });
+                      setTranscriptText(liveState.transcript_text ?? '');
+                      setSharedIsRecording(liveState.is_recording);
+                      setSharedRecorderName(liveState.updated_by_name ?? '');
+                      setSharedRecorderUserId(liveState.updated_by_user_id ?? '');
+                    } catch (error) {
+                      const message =
+                        error instanceof Error ? error.message : '전사 초기화에 실패했습니다.';
+                      setSaveMessage(message);
+                    }
+                  })();
+                }}
+                disabled={isRecording || isTranscribing || (!isMockMode && !isEditing)}
+                style={{ height: '34px', padding: '0 12px' }}
               >
-                <strong style={{ fontSize: '12px' }}>[회의 결과] 제안</strong>
-                <button
-                  className="nav-menu-item"
-                  type="button"
-                  onClick={() => openCompareSection('meeting_result')}
-                >
-                  반영
-                </button>
-              </div>
-              <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
-                {summarySuggestion.meeting_result.map((item, index) => (
-                  <li key={`result-${index}`}>{item}</li>
-                ))}
-              </ul>
+                초기화
+              </button>
             </div>
-          </div>
-          {compareSection && (
+            <div
+              style={{
+                minHeight: '140px',
+                maxHeight: '220px',
+                overflowY: 'auto',
+                background: '#fafafb',
+                border: '1px solid var(--border)',
+                borderRadius: '8px',
+                padding: '10px',
+                fontSize: '12px',
+                lineHeight: 1.5,
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {transcriptText || '녹음을 시작하면 일정 주기마다 전사 텍스트가 표시됩니다.'}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-soft)' }}>
+                {isTranscribing
+                  ? '전사 처리 중...'
+                  : isRecording
+                    ? isMockMode
+                      ? '모의 녹음 중'
+                      : '녹음 중'
+                    : !isMockMode && sharedIsRecording
+                      ? sharedRecorderUserId === viewerId
+                        ? '내가 다른 탭에서 녹음 중'
+                        : `${sharedRecorderName || '다른 사용자'}가 녹음 중`
+                      : '대기 중'}
+              </span>
+              <button
+                className="linear-primary-button"
+                type="button"
+                onClick={handleGenerateMinutes}
+                disabled={
+                  isRecording || isTranscribing || isGeneratingSummary || !transcriptText.trim()
+                }
+                style={{ width: 'auto', padding: '0 12px', height: '30px' }}
+              >
+                {isGeneratingSummary ? '생성 중...' : '회의록 자동생성'}
+              </button>
+            </div>
             <div
               style={{
                 borderTop: '1px dashed var(--border)',
                 paddingTop: '10px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '8px',
+                gap: '10px',
               }}
             >
-              <strong style={{ fontSize: '12px' }}>
-                {compareSection === 'agenda'
-                  ? '[주요 안건] 비교 후 선택'
-                  : compareSection === 'meeting_content'
-                    ? '[회의 내용] 비교 후 선택'
-                    : '[회의 결과] 비교 후 선택'}
-              </strong>
-              <div className="status-info-group">
-                <span className="status-info-label">기존 작성</span>
-                <textarea
-                  className="minutes-textarea"
-                  value={compareOriginalText}
-                  readOnly
-                  style={{ minHeight: '90px', fontSize: '12px', padding: '10px' }}
-                />
-              </div>
-              <div className="status-info-group">
-                <span className="status-info-label">AI 제안</span>
-                <textarea
-                  className="minutes-textarea"
-                  value={compareAiText}
-                  readOnly
-                  style={{ minHeight: '90px', fontSize: '12px', padding: '10px' }}
-                />
-              </div>
-              <div className="status-info-group">
-                <span className="status-info-label">병합 결과(중복 제외)</span>
-                <textarea
-                  className="minutes-textarea"
-                  value={compareMergedText}
-                  readOnly
-                  style={{ minHeight: '90px', fontSize: '12px', padding: '10px' }}
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                <button
-                  className="nav-menu-item"
-                  type="button"
-                  onClick={() => setCompareSection(null)}
+              <div>
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
-                  기존 유지
-                </button>
-                <button className="nav-menu-item" type="button" onClick={applyReplaceWithAi}>
-                  AI로 교체
-                </button>
-                <button
-                  className="linear-primary-button"
-                  type="button"
-                  onClick={applyMergedSuggestion}
+                  <strong style={{ fontSize: '12px' }}>[주요 안건] 제안</strong>
+                  <button
+                    className="nav-menu-item"
+                    type="button"
+                    onClick={() => applySuggestionForSection('agenda')}
+                  >
+                    반영
+                  </button>
+                </div>
+                <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
+                  {summarySuggestion.agenda.map((item, index) => (
+                    <li key={`agenda-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                 >
-                  병합 반영
-                </button>
+                  <strong style={{ fontSize: '12px' }}>[회의 내용] 제안</strong>
+                  <button
+                    className="nav-menu-item"
+                    type="button"
+                    onClick={() => applySuggestionForSection('meeting_content')}
+                  >
+                    반영
+                  </button>
+                </div>
+                <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
+                  {summarySuggestion.meeting_content.map((item, index) => (
+                    <li key={`content-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <strong style={{ fontSize: '12px' }}>[회의 결과] 제안</strong>
+                  <button
+                    className="nav-menu-item"
+                    type="button"
+                    onClick={() => applySuggestionForSection('meeting_result')}
+                  >
+                    반영
+                  </button>
+                </div>
+                <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
+                  {summarySuggestion.meeting_result.map((item, index) => (
+                    <li key={`result-${index}`}>{item}</li>
+                  ))}
+                </ul>
               </div>
             </div>
-          )}
-        </aside>
+            <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-soft)' }}>
+              반영 버튼을 누르면 해당 섹션에 제안이 바로 병합됩니다. 반영하지 않으면 참고해서 직접
+              붙여넣어 주세요.
+            </p>
+          </aside>
+        )}
       </div>
     </div>
   );

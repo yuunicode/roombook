@@ -11,17 +11,20 @@ from app.service.auth_service import AuthUser, get_user_from_session_token
 from app.service.domain import DomainError
 from app.service.reservation_service import (
     CreateReservationInput,
+    MinutesLiveStateResult,
     MinutesLockResult,
     ReservationDetailResult,
     UpdateReservationInput,
     acquire_minutes_lock,
     create_reservation,
     delete_reservation,
+    get_minutes_live_state,
     get_minutes_lock,
     get_reservation_detail,
     get_reservation_minutes_detail,
     list_reservations_for_wiki,
     release_minutes_lock,
+    update_minutes_live_state,
     update_reservation,
     update_reservation_minutes,
 )
@@ -124,6 +127,20 @@ class MinutesLockResponse(BaseModel):
     holder_user_id: str
     holder_name: str
     expires_at: datetime
+
+
+class MinutesLiveStateResponse(BaseModel):
+    reservation_id: str
+    transcript_text: str
+    is_recording: bool
+    updated_by_user_id: str | None = None
+    updated_by_name: str | None = None
+    updated_at: datetime
+
+
+class UpdateMinutesLiveStateRequest(BaseModel):
+    transcript_text: str | None = None
+    is_recording: bool | None = None
 
 
 @router.post(
@@ -407,6 +424,51 @@ async def release_minutes_lock_api(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.get(
+    "/{reservation_id}/minutes-live-state",
+    response_model=MinutesLiveStateResponse,
+    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+async def get_minutes_live_state_api(
+    reservation_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> MinutesLiveStateResponse | JSONResponse:
+    auth_user = await _require_auth_user(request, db)
+    if auth_user is None:
+        return _error_response(status.HTTP_401_UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다.")
+    result = await get_minutes_live_state(reservation_id=reservation_id, db=db)
+    if isinstance(result, DomainError):
+        return _error_response(_error_status(result.code), result.code, result.message)
+    return _to_minutes_live_state_response(result)
+
+
+@router.patch(
+    "/{reservation_id}/minutes-live-state",
+    response_model=MinutesLiveStateResponse,
+    responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+async def update_minutes_live_state_api(
+    reservation_id: str,
+    payload: UpdateMinutesLiveStateRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> MinutesLiveStateResponse | JSONResponse:
+    auth_user = await _require_auth_user(request, db)
+    if auth_user is None:
+        return _error_response(status.HTTP_401_UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다.")
+    result = await update_minutes_live_state(
+        reservation_id=reservation_id,
+        holder=auth_user,
+        transcript_text=payload.transcript_text,
+        is_recording=payload.is_recording,
+        db=db,
+    )
+    if isinstance(result, DomainError):
+        return _error_response(_error_status(result.code), result.code, result.message)
+    return _to_minutes_live_state_response(result)
+
+
 @router.delete(
     "/{reservation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -463,6 +525,17 @@ def _to_minutes_lock_response(result: MinutesLockResult) -> MinutesLockResponse:
         holder_user_id=result.holder_user_id,
         holder_name=result.holder_name,
         expires_at=result.expires_at,
+    )
+
+
+def _to_minutes_live_state_response(result: MinutesLiveStateResult) -> MinutesLiveStateResponse:
+    return MinutesLiveStateResponse(
+        reservation_id=result.reservation_id,
+        transcript_text=result.transcript_text,
+        is_recording=result.is_recording,
+        updated_by_user_id=result.updated_by_user_id,
+        updated_by_name=result.updated_by_name,
+        updated_at=result.updated_at,
     )
 
 

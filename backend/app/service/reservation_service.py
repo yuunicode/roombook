@@ -6,6 +6,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.infra.minutes_live_state_repo import (
+    add_or_update_minutes_live_state,
+    find_minutes_live_state,
+)
 from app.infra.minutes_lock_repo import (
     add_or_update_minutes_lock,
     delete_minutes_lock,
@@ -116,6 +120,16 @@ class MinutesLockResult:
     holder_user_id: str
     holder_name: str
     expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class MinutesLiveStateResult:
+    reservation_id: str
+    transcript_text: str
+    is_recording: bool
+    updated_by_user_id: str | None
+    updated_by_name: str | None
+    updated_at: datetime
 
 
 async def create_reservation(
@@ -368,8 +382,97 @@ async def release_minutes_lock(
         return DomainError(code="FORBIDDEN", message="다른 사용자가 보유한 수정 잠금입니다.")
 
     await delete_minutes_lock(db, reservation_id)
+    current_state = await find_minutes_live_state(db, reservation_id)
+    if current_state is not None and current_state.is_recording:
+        await add_or_update_minutes_live_state(
+            db=db,
+            reservation_id=reservation_id,
+            transcript_text=current_state.transcript_text,
+            is_recording=False,
+            updated_by_user_id=current_state.updated_by_user_id,
+            updated_by_name=current_state.updated_by_name,
+        )
     await db.commit()
     return None
+
+
+async def get_minutes_live_state(
+    reservation_id: str,
+    db: AsyncSession,
+) -> MinutesLiveStateResult | DomainError:
+    reservation_item = await find_reservation_with_timetable_and_creator(db, reservation_id)
+    if reservation_item is None:
+        return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
+
+    state = await find_minutes_live_state(db, reservation_id)
+    if state is None:
+        return MinutesLiveStateResult(
+            reservation_id=reservation_id,
+            transcript_text="",
+            is_recording=False,
+            updated_by_user_id=None,
+            updated_by_name=None,
+            updated_at=datetime.now(UTC),
+        )
+    return MinutesLiveStateResult(
+        reservation_id=state.reservation_id,
+        transcript_text=state.transcript_text,
+        is_recording=state.is_recording,
+        updated_by_user_id=state.updated_by_user_id,
+        updated_by_name=state.updated_by_name,
+        updated_at=state.updated_at,
+    )
+
+
+async def update_minutes_live_state(
+    reservation_id: str,
+    holder: AuthUser,
+    transcript_text: str | None,
+    is_recording: bool | None,
+    db: AsyncSession,
+) -> MinutesLiveStateResult | DomainError:
+    reservation_item = await find_reservation_with_timetable_and_creator(db, reservation_id)
+    if reservation_item is None:
+        return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
+
+    now = datetime.now(UTC)
+    lock = await find_minutes_lock(db, reservation_id)
+    if lock is None or lock.expires_at <= now or lock.holder_user_id != holder.id:
+        if lock is not None and lock.expires_at <= now:
+            await db.delete(lock)
+            await db.commit()
+        return DomainError(code="FORBIDDEN", message="수정 잠금 보유자만 전사 상태를 변경할 수 있습니다.")
+
+    current_state = await find_minutes_live_state(db, reservation_id)
+    next_transcript = (
+        transcript_text
+        if transcript_text is not None
+        else (current_state.transcript_text if current_state is not None else "")
+    )
+    next_is_recording = (
+        is_recording
+        if is_recording is not None
+        else (current_state.is_recording if current_state is not None else False)
+    )
+
+    state = await add_or_update_minutes_live_state(
+        db=db,
+        reservation_id=reservation_id,
+        transcript_text=next_transcript,
+        is_recording=next_is_recording,
+        updated_by_user_id=holder.id,
+        updated_by_name=holder.name,
+    )
+    await db.commit()
+    await db.refresh(state)
+    return MinutesLiveStateResult(
+        reservation_id=state.reservation_id,
+        transcript_text=state.transcript_text,
+        is_recording=state.is_recording,
+        updated_by_user_id=state.updated_by_user_id,
+        updated_by_name=state.updated_by_name,
+        updated_at=state.updated_at,
+    )
 
 
 async def _update_reservation_internal(

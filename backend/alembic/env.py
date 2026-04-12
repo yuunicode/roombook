@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.settings import DATABASE_URL
 from app.infra import (  # noqa: F401
+    minutes_live_state,
     reservation,
     reservation_attendee,
     reservation_label,

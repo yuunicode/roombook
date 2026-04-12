@@ -95,6 +95,20 @@ export type MinutesLockDto = {
   expires_at: string;
 };
 
+export type MinutesLiveStateDto = {
+  reservation_id: string;
+  transcript_text: string;
+  is_recording: boolean;
+  updated_by_user_id?: string | null;
+  updated_by_name?: string | null;
+  updated_at: string;
+};
+
+type UpdateMinutesLiveStatePayload = {
+  transcript_text?: string;
+  is_recording?: boolean;
+};
+
 type TranscribeChunkPayload = {
   audio_base64: string;
   mime_type?: string;
@@ -298,6 +312,22 @@ export async function acquireMinutesLock(
 export async function releaseMinutesLock(reservationId: string): Promise<void> {
   await requestJson<void>(`/reservations/${reservationId}/minutes-lock`, {
     method: 'DELETE',
+  });
+}
+
+export async function getMinutesLiveState(reservationId: string): Promise<MinutesLiveStateDto> {
+  return requestJson<MinutesLiveStateDto>(`/reservations/${reservationId}/minutes-live-state`, {
+    method: 'GET',
+  });
+}
+
+export async function updateMinutesLiveState(
+  reservationId: string,
+  payload: UpdateMinutesLiveStatePayload
+): Promise<MinutesLiveStateDto> {
+  return requestJson<MinutesLiveStateDto>(`/reservations/${reservationId}/minutes-live-state`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
   });
 }
 
