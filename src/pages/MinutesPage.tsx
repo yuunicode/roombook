@@ -43,10 +43,21 @@ type EditLock = {
 
 const LOCK_HEARTBEAT_MS = 3000;
 const LIVE_SYNC_MS = 5000;
+const SILENCE_FLUSH_MS = 900;
+const MIN_CHUNK_MS = 1500;
+const MAX_CHUNK_MS = 15000;
+const AUDIO_LEVEL_THRESHOLD = 0.018;
 const MAX_UNDO_HISTORY = 100;
 const MAX_BULLET_LEVEL = 4;
 const BULLET_SYMBOLS = ['•', '◦', '▪', '▫'] as const;
 const BULLET_PATTERN = /^(\t{0,3})([•◦▪▫])\s?(.*)$/;
+const MOCK_TRANSCRIPT_LINES = [
+  '프로젝트 일정 점검을 위해 이번 주 목표를 다시 확인했습니다.',
+  'API 응답 지연 문제는 캐시 정책 조정으로 우선 대응하기로 했습니다.',
+  'UI 개편은 관리자 패널부터 단계적으로 적용하기로 합의했습니다.',
+  '다음 스프린트 전까지 QA 체크리스트를 표준화하기로 했습니다.',
+  '배포 전날 회귀 테스트 결과를 공유하고 승인 절차를 진행합니다.',
+] as const;
 
 function getBulletPrefix(level: number) {
   const normalized = Math.max(0, Math.min(level, BULLET_SYMBOLS.length - 1));
@@ -85,7 +96,11 @@ function mergeBulletPoints(existingText: string, suggestions: string[]) {
     const normalized = normalizeBulletText(item);
     if (!normalized || known.has(normalized)) continue;
     known.add(normalized);
-    appended.push(`- ${item.trim()}`);
+    const cleaned = item
+      .trim()
+      .replace(/^(안건|주제|내용|결과)\s*:\s*/i, '')
+      .trim();
+    appended.push(`- ${cleaned}`);
   }
   if (appended.length === 0) {
     return existingText;
@@ -129,6 +144,7 @@ function MinutesPage() {
   const [attendeeQuery, setAttendeeQuery] = useState('');
   const [selectedAttendees, setSelectedAttendees] = useState<AppUser[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [isMockMode, setIsMockMode] = useState(import.meta.env.VITE_MOCK_AI === 'true');
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [transcriptText, setTranscriptText] = useState('');
@@ -142,6 +158,15 @@ function MinutesPage() {
   const isSavingRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const speakingRef = useRef(false);
+  const lastVoiceAtRef = useRef(0);
+  const lastChunkAtRef = useRef(0);
+  const mockIntervalRef = useRef<number | null>(null);
+  const mockLineIndexRef = useRef(0);
+  const transcriptTextRef = useRef('');
   const transcriptQueueRef = useRef(Promise.resolve());
 
   const agendaRef = useRef<HTMLTextAreaElement>(null);
@@ -272,8 +297,23 @@ function MinutesPage() {
   }, [isEditing, releaseLock]);
 
   useEffect(() => {
+    transcriptTextRef.current = transcriptText;
+  }, [transcriptText]);
+
+  useEffect(() => {
     return () => {
+      if (mockIntervalRef.current !== null) {
+        window.clearInterval(mockIntervalRef.current);
+        mockIntervalRef.current = null;
+      }
+      if (rafIdRef.current !== null) {
+        window.cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
       mediaRecorderRef.current?.stop();
+      audioContextRef.current?.close().catch(() => undefined);
+      audioContextRef.current = null;
+      analyserRef.current = null;
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
@@ -710,68 +750,159 @@ function MinutesPage() {
     return window.btoa(binary);
   };
 
-  const queueTranscription = useCallback(
-    (blob: Blob) => {
-      transcriptQueueRef.current = transcriptQueueRef.current
-        .then(async () => {
-          if (blob.size === 0) return;
-          setIsTranscribing(true);
-          const base64 = await blobToBase64(blob);
-          const result = await transcribeChunk({
-            audio_base64: base64,
-            mime_type: blob.type || 'audio/webm',
-            previous_text: transcriptText.slice(-1200),
-          });
-          const chunk = result.text.trim();
-          if (!chunk) return;
-          setTranscriptText((prev) => (prev ? `${prev}\n${chunk}` : chunk));
-        })
-        .catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : '전사 중 오류가 발생했습니다.';
-          setSaveMessage(message);
-        })
-        .finally(() => {
-          setIsTranscribing(false);
+  const queueTranscription = useCallback((blob: Blob) => {
+    transcriptQueueRef.current = transcriptQueueRef.current
+      .then(async () => {
+        if (blob.size === 0) return;
+        setIsTranscribing(true);
+        const base64 = await blobToBase64(blob);
+        const result = await transcribeChunk({
+          audio_base64: base64,
+          mime_type: blob.type || 'audio/webm',
+          previous_text: transcriptTextRef.current.slice(-1200),
         });
+        const chunk = result.text.trim();
+        if (!chunk) return;
+        setTranscriptText((prev) => (prev ? `${prev}\n${chunk}` : chunk));
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : '전사 중 오류가 발생했습니다.';
+        setSaveMessage(message);
+      })
+      .finally(() => {
+        setIsTranscribing(false);
+      });
+  }, []);
+
+  const stopAudioResources = useCallback(() => {
+    if (rafIdRef.current !== null) {
+      window.cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    analyserRef.current = null;
+    void audioContextRef.current?.close().catch(() => undefined);
+    audioContextRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  }, []);
+
+  const startMockRecording = useCallback(() => {
+    mockLineIndexRef.current = 0;
+    setIsRecording(true);
+    setIsTranscribing(false);
+    setSaveMessage('모의 녹음을 시작했습니다.');
+    mockIntervalRef.current = window.setInterval(() => {
+      const nextLine = MOCK_TRANSCRIPT_LINES[mockLineIndexRef.current];
+      if (!nextLine) {
+        if (mockIntervalRef.current !== null) {
+          window.clearInterval(mockIntervalRef.current);
+          mockIntervalRef.current = null;
+        }
+        setIsRecording(false);
+        return;
+      }
+      setTranscriptText((prev) => (prev ? `${prev}\n${nextLine}` : nextLine));
+      mockLineIndexRef.current += 1;
+    }, 1800);
+  }, []);
+
+  const startSilenceBasedRecording = useCallback(
+    async (stream: MediaStream) => {
+      const recorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm',
+      });
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) queueTranscription(event.data);
+      };
+      recorder.onstop = () => {
+        stopAudioResources();
+        mediaRecorderRef.current = null;
+        setIsRecording(false);
+      };
+      mediaRecorderRef.current = recorder;
+      mediaStreamRef.current = stream;
+
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+
+      speakingRef.current = false;
+      const now = performance.now();
+      lastVoiceAtRef.current = now;
+      lastChunkAtRef.current = now;
+
+      const buffer = new Uint8Array(analyser.fftSize);
+      const tick = () => {
+        const activeRecorder = mediaRecorderRef.current;
+        if (!activeRecorder || activeRecorder.state === 'inactive') return;
+        analyser.getByteTimeDomainData(buffer);
+        let sum = 0;
+        for (let i = 0; i < buffer.length; i += 1) {
+          const centered = (buffer[i] - 128) / 128;
+          sum += centered * centered;
+        }
+        const rms = Math.sqrt(sum / buffer.length);
+        const ts = performance.now();
+        if (rms >= AUDIO_LEVEL_THRESHOLD) {
+          speakingRef.current = true;
+          lastVoiceAtRef.current = ts;
+        }
+
+        const silenceElapsed = ts - lastVoiceAtRef.current;
+        const chunkElapsed = ts - lastChunkAtRef.current;
+        const shouldFlushBySilence =
+          speakingRef.current && silenceElapsed >= SILENCE_FLUSH_MS && chunkElapsed >= MIN_CHUNK_MS;
+        const shouldFlushByMax = chunkElapsed >= MAX_CHUNK_MS;
+        if (shouldFlushBySilence || shouldFlushByMax) {
+          activeRecorder.requestData();
+          speakingRef.current = false;
+          lastChunkAtRef.current = ts;
+        }
+        rafIdRef.current = window.requestAnimationFrame(tick);
+      };
+
+      recorder.start();
+      setIsRecording(true);
+      setSaveMessage('침묵 기반 녹음을 시작했습니다.');
+      rafIdRef.current = window.requestAnimationFrame(tick);
     },
-    [transcriptText]
+    [queueTranscription, stopAudioResources]
   );
 
   const handleStartRecording = useCallback(() => {
+    if (isMockMode) {
+      startMockRecording();
+      return;
+    }
     void (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream, {
-          mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-            ? 'audio/webm;codecs=opus'
-            : 'audio/webm',
-        });
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            queueTranscription(event.data);
-          }
-        };
-        recorder.onstop = () => {
-          stream.getTracks().forEach((track) => track.stop());
-          mediaStreamRef.current = null;
-          mediaRecorderRef.current = null;
-          setIsRecording(false);
-        };
-        mediaStreamRef.current = stream;
-        mediaRecorderRef.current = recorder;
-        recorder.start(2500);
-        setIsRecording(true);
+        await startSilenceBasedRecording(stream);
       } catch (error) {
         const message = error instanceof Error ? error.message : '마이크 권한을 확인해 주세요.';
         setSaveMessage(`녹음 시작 실패: ${message}`);
       }
     })();
-  }, [queueTranscription]);
+  }, [isMockMode, startMockRecording, startSilenceBasedRecording]);
 
   const handleStopRecording = useCallback(() => {
+    if (isMockMode) {
+      if (mockIntervalRef.current !== null) {
+        window.clearInterval(mockIntervalRef.current);
+        mockIntervalRef.current = null;
+      }
+      setIsRecording(false);
+      return;
+    }
     mediaRecorderRef.current?.stop();
     setIsRecording(false);
-  }, []);
+  }, [isMockMode]);
 
   const handleGenerateMinutes = useCallback(() => {
     void (async () => {
@@ -781,6 +912,22 @@ function MinutesPage() {
       }
       try {
         setIsGeneratingSummary(true);
+        if (isMockMode) {
+          const lines = transcriptText
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0);
+          const agenda = lines.slice(0, 3);
+          const meetingContent = lines.slice(1, 5);
+          const meetingResult = lines.slice(-3);
+          setSummarySuggestion({
+            agenda,
+            meeting_content: meetingContent,
+            meeting_result: meetingResult,
+          });
+          setSaveMessage('모의 AI 제안이 생성되었습니다.');
+          return;
+        }
         const result = await suggestMinutesFromTranscript({
           transcript: transcriptText,
           existing_agenda: draft.agenda,
@@ -796,7 +943,7 @@ function MinutesPage() {
         setIsGeneratingSummary(false);
       }
     })();
-  }, [draft.agenda, draft.meetingContent, draft.meetingResult, transcriptText]);
+  }, [draft.agenda, draft.meetingContent, draft.meetingResult, isMockMode, transcriptText]);
 
   const applySuggestionSection = useCallback(
     (section: MinutesSectionKey) => {
@@ -1264,9 +1411,26 @@ function MinutesPage() {
           <div>
             <h3 style={{ margin: 0, fontSize: '14px' }}>실시간 녹음/전사</h3>
             <p style={{ margin: '4px 0 0', color: 'var(--text-soft)', fontSize: '12px' }}>
-              gpt-4o-transcript
+              {isMockMode ? '모의 모드 (백엔드 호출 없음)' : 'gpt-4o-transcript · 침묵 기반 분할'}
             </p>
           </div>
+          <label
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px',
+              color: 'var(--text-soft)',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={isMockMode}
+              disabled={isRecording || isTranscribing}
+              onChange={(event) => setIsMockMode(event.target.checked)}
+            />
+            모의 모드 사용
+          </label>
           <div style={{ display: 'flex', gap: '8px' }}>
             {!isRecording ? (
               <button className="nav-menu-item" type="button" onClick={handleStartRecording}>
@@ -1304,7 +1468,13 @@ function MinutesPage() {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '12px', color: 'var(--text-soft)' }}>
-              {isTranscribing ? '전사 중...' : isRecording ? '녹음 중' : '대기 중'}
+              {isTranscribing
+                ? '전사 요청 중...'
+                : isRecording
+                  ? isMockMode
+                    ? '모의 전사 중'
+                    : '녹음 중 (침묵 시 청크 전송)'
+                  : '대기 중'}
             </span>
             <button
               className="linear-primary-button"
@@ -1315,7 +1485,7 @@ function MinutesPage() {
               }
               style={{ width: 'auto', padding: '0 12px', height: '30px' }}
             >
-              {isGeneratingSummary ? '생성 중...' : 'AI 불릿 생성'}
+              {isGeneratingSummary ? '생성 중...' : '회의록 자동생성'}
             </button>
           </div>
           <div
