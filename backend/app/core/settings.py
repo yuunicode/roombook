@@ -1,6 +1,10 @@
 import os
 from typing import Literal
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://test:ecminer@localhost:5432/roombook")
 
 SESSION_COOKIE_NAME = "ROOMBOOK_SESSION"

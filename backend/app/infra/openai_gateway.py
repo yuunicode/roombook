@@ -29,13 +29,13 @@ def transcribe_audio_chunk(
     file_name = f"chunk.{extension.strip() or 'webm'}"
     if prompt:
         response = _client().audio.transcriptions.create(
-            model="gpt-4o-transcript",
+            model="gpt-4o-mini-transcribe",
             file=(file_name, audio_bytes),
             prompt=prompt,
         )
     else:
         response = _client().audio.transcriptions.create(
-            model="gpt-4o-transcript",
+            model="gpt-4o-mini-transcribe",
             file=(file_name, audio_bytes),
         )
     return GatewayTranscriptionResponse(text=(response.text or "").strip(), usage=getattr(response, "usage", None))

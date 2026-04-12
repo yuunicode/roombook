@@ -43,10 +43,6 @@ type EditLock = {
 
 const LOCK_HEARTBEAT_MS = 3000;
 const LIVE_SYNC_MS = 5000;
-const SILENCE_FLUSH_MS = 900;
-const MIN_CHUNK_MS = 1500;
-const MAX_CHUNK_MS = 15000;
-const AUDIO_LEVEL_THRESHOLD = 0.018;
 const MAX_UNDO_HISTORY = 100;
 const MAX_BULLET_LEVEL = 4;
 const BULLET_SYMBOLS = ['•', '◦', '▪', '▫'] as const;
@@ -108,6 +104,18 @@ function mergeBulletPoints(existingText: string, suggestions: string[]) {
   return [existingText.trim(), ...appended].filter((chunk) => chunk.length > 0).join('\n');
 }
 
+function toBulletLines(items: string[]) {
+  return items
+    .map((item) =>
+      item
+        .trim()
+        .replace(/^(안건|주제|내용|결과)\s*:\s*/i, '')
+        .trim()
+    )
+    .filter((item) => item.length > 0)
+    .map((item) => `- ${item}`);
+}
+
 function MinutesPage() {
   const navigate = useNavigate();
   const { reservationId } = useParams<{ reservationId: string }>();
@@ -153,21 +161,13 @@ function MinutesPage() {
     meeting_content: [],
     meeting_result: [],
   });
+  const [compareSection, setCompareSection] = useState<MinutesSectionKey | null>(null);
   const historyRef = useRef<MinutesDraft[]>([]);
   const lastSavedKeyRef = useRef('');
   const isSavingRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const rafIdRef = useRef<number | null>(null);
-  const speakingRef = useRef(false);
-  const lastVoiceAtRef = useRef(0);
-  const lastChunkAtRef = useRef(0);
-  const mockIntervalRef = useRef<number | null>(null);
-  const mockLineIndexRef = useRef(0);
-  const transcriptTextRef = useRef('');
-  const transcriptQueueRef = useRef(Promise.resolve());
+  const recordedChunksRef = useRef<Blob[]>([]);
 
   const agendaRef = useRef<HTMLTextAreaElement>(null);
   const meetingContentRef = useRef<HTMLTextAreaElement>(null);
@@ -297,24 +297,10 @@ function MinutesPage() {
   }, [isEditing, releaseLock]);
 
   useEffect(() => {
-    transcriptTextRef.current = transcriptText;
-  }, [transcriptText]);
-
-  useEffect(() => {
     return () => {
-      if (mockIntervalRef.current !== null) {
-        window.clearInterval(mockIntervalRef.current);
-        mockIntervalRef.current = null;
-      }
-      if (rafIdRef.current !== null) {
-        window.cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = null;
-      }
       mediaRecorderRef.current?.stop();
-      audioContextRef.current?.close().catch(() => undefined);
-      audioContextRef.current = null;
-      analyserRef.current = null;
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordedChunksRef.current = [];
     };
   }, []);
 
@@ -750,129 +736,71 @@ function MinutesPage() {
     return window.btoa(binary);
   };
 
-  const queueTranscription = useCallback((blob: Blob) => {
-    transcriptQueueRef.current = transcriptQueueRef.current
-      .then(async () => {
-        if (blob.size === 0) return;
-        setIsTranscribing(true);
-        const base64 = await blobToBase64(blob);
-        const result = await transcribeChunk({
-          audio_base64: base64,
-          mime_type: blob.type || 'audio/webm',
-          previous_text: transcriptTextRef.current.slice(-1200),
-        });
-        const chunk = result.text.trim();
-        if (!chunk) return;
-        setTranscriptText((prev) => (prev ? `${prev}\n${chunk}` : chunk));
-      })
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : '전사 중 오류가 발생했습니다.';
-        setSaveMessage(message);
-      })
-      .finally(() => {
-        setIsTranscribing(false);
-      });
-  }, []);
-
   const stopAudioResources = useCallback(() => {
-    if (rafIdRef.current !== null) {
-      window.cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
-    analyserRef.current = null;
-    void audioContextRef.current?.close().catch(() => undefined);
-    audioContextRef.current = null;
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
   }, []);
 
-  const startMockRecording = useCallback(() => {
-    mockLineIndexRef.current = 0;
-    setIsRecording(true);
-    setIsTranscribing(false);
-    setSaveMessage('모의 녹음을 시작했습니다.');
-    mockIntervalRef.current = window.setInterval(() => {
-      const nextLine = MOCK_TRANSCRIPT_LINES[mockLineIndexRef.current];
-      if (!nextLine) {
-        if (mockIntervalRef.current !== null) {
-          window.clearInterval(mockIntervalRef.current);
-          mockIntervalRef.current = null;
-        }
-        setIsRecording(false);
-        return;
-      }
-      setTranscriptText((prev) => (prev ? `${prev}\n${nextLine}` : nextLine));
-      mockLineIndexRef.current += 1;
-    }, 1800);
+  const transcribeRecordedAudio = useCallback(async (blob: Blob) => {
+    if (blob.size === 0) {
+      setSaveMessage('녹음된 오디오가 없습니다.');
+      return;
+    }
+    try {
+      setIsTranscribing(true);
+      setSaveMessage('녹음 파일 전사 중입니다...');
+      const base64 = await blobToBase64(blob);
+      const result = await transcribeChunk({
+        audio_base64: base64,
+        mime_type: blob.type || 'audio/webm',
+      });
+      setTranscriptText(result.text.trim());
+      setSaveMessage('전사가 완료되었습니다.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '전사 중 오류가 발생했습니다.';
+      setSaveMessage(message);
+    } finally {
+      setIsTranscribing(false);
+    }
   }, []);
 
-  const startSilenceBasedRecording = useCallback(
+  const startMockRecording = useCallback(() => {
+    setIsRecording(true);
+    setIsTranscribing(false);
+    setSaveMessage('모의 녹음을 시작했습니다. 종료 후 전사본이 생성됩니다.');
+  }, []);
+
+  const startSingleRecording = useCallback(
     async (stream: MediaStream) => {
+      recordedChunksRef.current = [];
       const recorder = new MediaRecorder(stream, {
         mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
           ? 'audio/webm;codecs=opus'
           : 'audio/webm',
       });
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) queueTranscription(event.data);
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
       };
       recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, {
+          type: recorder.mimeType || 'audio/webm',
+        });
+        recordedChunksRef.current = [];
         stopAudioResources();
         mediaRecorderRef.current = null;
         setIsRecording(false);
+        void transcribeRecordedAudio(blob);
       };
       mediaRecorderRef.current = recorder;
       mediaStreamRef.current = stream;
 
-      const audioContext = new AudioContext();
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 2048;
-      source.connect(analyser);
-      audioContextRef.current = audioContext;
-      analyserRef.current = analyser;
-
-      speakingRef.current = false;
-      const now = performance.now();
-      lastVoiceAtRef.current = now;
-      lastChunkAtRef.current = now;
-
-      const buffer = new Uint8Array(analyser.fftSize);
-      const tick = () => {
-        const activeRecorder = mediaRecorderRef.current;
-        if (!activeRecorder || activeRecorder.state === 'inactive') return;
-        analyser.getByteTimeDomainData(buffer);
-        let sum = 0;
-        for (let i = 0; i < buffer.length; i += 1) {
-          const centered = (buffer[i] - 128) / 128;
-          sum += centered * centered;
-        }
-        const rms = Math.sqrt(sum / buffer.length);
-        const ts = performance.now();
-        if (rms >= AUDIO_LEVEL_THRESHOLD) {
-          speakingRef.current = true;
-          lastVoiceAtRef.current = ts;
-        }
-
-        const silenceElapsed = ts - lastVoiceAtRef.current;
-        const chunkElapsed = ts - lastChunkAtRef.current;
-        const shouldFlushBySilence =
-          speakingRef.current && silenceElapsed >= SILENCE_FLUSH_MS && chunkElapsed >= MIN_CHUNK_MS;
-        const shouldFlushByMax = chunkElapsed >= MAX_CHUNK_MS;
-        if (shouldFlushBySilence || shouldFlushByMax) {
-          activeRecorder.requestData();
-          speakingRef.current = false;
-          lastChunkAtRef.current = ts;
-        }
-        rafIdRef.current = window.requestAnimationFrame(tick);
-      };
-
       recorder.start();
       setIsRecording(true);
-      setSaveMessage('침묵 기반 녹음을 시작했습니다.');
-      rafIdRef.current = window.requestAnimationFrame(tick);
+      setSaveMessage('녹음을 시작했습니다. 종료 후 전사합니다.');
     },
-    [queueTranscription, stopAudioResources]
+    [stopAudioResources, transcribeRecordedAudio]
   );
 
   const handleStartRecording = useCallback(() => {
@@ -883,20 +811,18 @@ function MinutesPage() {
     void (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        await startSilenceBasedRecording(stream);
+        await startSingleRecording(stream);
       } catch (error) {
         const message = error instanceof Error ? error.message : '마이크 권한을 확인해 주세요.';
         setSaveMessage(`녹음 시작 실패: ${message}`);
       }
     })();
-  }, [isMockMode, startMockRecording, startSilenceBasedRecording]);
+  }, [isMockMode, startMockRecording, startSingleRecording]);
 
   const handleStopRecording = useCallback(() => {
     if (isMockMode) {
-      if (mockIntervalRef.current !== null) {
-        window.clearInterval(mockIntervalRef.current);
-        mockIntervalRef.current = null;
-      }
+      setTranscriptText(MOCK_TRANSCRIPT_LINES.join('\n'));
+      setSaveMessage('모의 전사가 완료되었습니다.');
       setIsRecording(false);
       return;
     }
@@ -945,34 +871,86 @@ function MinutesPage() {
     })();
   }, [draft.agenda, draft.meetingContent, draft.meetingResult, isMockMode, transcriptText]);
 
-  const applySuggestionSection = useCallback(
-    (section: MinutesSectionKey) => {
-      if (!isEditing) {
-        setSaveMessage('수정 모드에서만 반영할 수 있습니다.');
-        return;
-      }
-      if (section === 'agenda') {
-        const merged = mergeBulletPoints(draft.agenda, summarySuggestion.agenda);
-        updateDraft({ agenda: merged });
-        return;
-      }
-      if (section === 'meeting_content') {
-        const merged = mergeBulletPoints(draft.meetingContent, summarySuggestion.meeting_content);
-        updateDraft({ meetingContent: merged });
-        return;
-      }
-      const merged = mergeBulletPoints(draft.meetingResult, summarySuggestion.meeting_result);
-      updateDraft({ meetingResult: merged });
-    },
-    [
-      draft.agenda,
-      draft.meetingContent,
-      draft.meetingResult,
-      isEditing,
-      summarySuggestion,
-      updateDraft,
-    ]
-  );
+  const openCompareSection = useCallback((section: MinutesSectionKey) => {
+    setCompareSection(section);
+  }, []);
+
+  const applyMergedSuggestion = useCallback(() => {
+    if (!compareSection) return;
+    if (!isEditing) {
+      setSaveMessage('수정 모드에서만 반영할 수 있습니다.');
+      return;
+    }
+    if (compareSection === 'agenda') {
+      updateDraft({ agenda: mergeBulletPoints(draft.agenda, summarySuggestion.agenda) });
+      setCompareSection(null);
+      return;
+    }
+    if (compareSection === 'meeting_content') {
+      updateDraft({
+        meetingContent: mergeBulletPoints(draft.meetingContent, summarySuggestion.meeting_content),
+      });
+      setCompareSection(null);
+      return;
+    }
+    updateDraft({
+      meetingResult: mergeBulletPoints(draft.meetingResult, summarySuggestion.meeting_result),
+    });
+    setCompareSection(null);
+  }, [
+    compareSection,
+    draft.agenda,
+    draft.meetingContent,
+    draft.meetingResult,
+    isEditing,
+    summarySuggestion,
+    updateDraft,
+  ]);
+
+  const applyReplaceWithAi = useCallback(() => {
+    if (!compareSection) return;
+    if (!isEditing) {
+      setSaveMessage('수정 모드에서만 반영할 수 있습니다.');
+      return;
+    }
+    if (compareSection === 'agenda') {
+      updateDraft({ agenda: toBulletLines(summarySuggestion.agenda).join('\n') });
+      setCompareSection(null);
+      return;
+    }
+    if (compareSection === 'meeting_content') {
+      updateDraft({ meetingContent: toBulletLines(summarySuggestion.meeting_content).join('\n') });
+      setCompareSection(null);
+      return;
+    }
+    updateDraft({ meetingResult: toBulletLines(summarySuggestion.meeting_result).join('\n') });
+    setCompareSection(null);
+  }, [compareSection, isEditing, summarySuggestion, updateDraft]);
+
+  const compareOriginalText =
+    compareSection === 'agenda'
+      ? draft.agenda
+      : compareSection === 'meeting_content'
+        ? draft.meetingContent
+        : compareSection === 'meeting_result'
+          ? draft.meetingResult
+          : '';
+  const compareAiText =
+    compareSection === 'agenda'
+      ? toBulletLines(summarySuggestion.agenda).join('\n')
+      : compareSection === 'meeting_content'
+        ? toBulletLines(summarySuggestion.meeting_content).join('\n')
+        : compareSection === 'meeting_result'
+          ? toBulletLines(summarySuggestion.meeting_result).join('\n')
+          : '';
+  const compareMergedText =
+    compareSection === 'agenda'
+      ? mergeBulletPoints(draft.agenda, summarySuggestion.agenda)
+      : compareSection === 'meeting_content'
+        ? mergeBulletPoints(draft.meetingContent, summarySuggestion.meeting_content)
+        : compareSection === 'meeting_result'
+          ? mergeBulletPoints(draft.meetingResult, summarySuggestion.meeting_result)
+          : '';
 
   const handleGoBack = () => {
     if (window.history.length > 1) {
@@ -1409,9 +1387,11 @@ function MinutesPage() {
           }}
         >
           <div>
-            <h3 style={{ margin: 0, fontSize: '14px' }}>실시간 녹음/전사</h3>
+            <h3 style={{ margin: 0, fontSize: '14px' }}>녹음 후 전사</h3>
             <p style={{ margin: '4px 0 0', color: 'var(--text-soft)', fontSize: '12px' }}>
-              {isMockMode ? '모의 모드 (백엔드 호출 없음)' : 'gpt-4o-transcript · 침묵 기반 분할'}
+              {isMockMode
+                ? '모의 모드 (백엔드 호출 없음)'
+                : '녹음 종료 후 1회 전사 (gpt-4o-mini-transcribe)'}
             </p>
           </div>
           <label
@@ -1464,16 +1444,16 @@ function MinutesPage() {
               whiteSpace: 'pre-wrap',
             }}
           >
-            {transcriptText || '녹음을 시작하면 전사 텍스트가 실시간으로 표시됩니다.'}
+            {transcriptText || '녹음을 종료하면 전사 텍스트가 표시됩니다.'}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '12px', color: 'var(--text-soft)' }}>
               {isTranscribing
-                ? '전사 요청 중...'
+                ? '전사 처리 중...'
                 : isRecording
                   ? isMockMode
-                    ? '모의 전사 중'
-                    : '녹음 중 (침묵 시 청크 전송)'
+                    ? '모의 녹음 중'
+                    : '녹음 중'
                   : '대기 중'}
             </span>
             <button
@@ -1505,7 +1485,7 @@ function MinutesPage() {
                 <button
                   className="nav-menu-item"
                   type="button"
-                  onClick={() => applySuggestionSection('agenda')}
+                  onClick={() => openCompareSection('agenda')}
                 >
                   반영
                 </button>
@@ -1524,7 +1504,7 @@ function MinutesPage() {
                 <button
                   className="nav-menu-item"
                   type="button"
-                  onClick={() => applySuggestionSection('meeting_content')}
+                  onClick={() => openCompareSection('meeting_content')}
                 >
                   반영
                 </button>
@@ -1543,7 +1523,7 @@ function MinutesPage() {
                 <button
                   className="nav-menu-item"
                   type="button"
-                  onClick={() => applySuggestionSection('meeting_result')}
+                  onClick={() => openCompareSection('meeting_result')}
                 >
                   반영
                 </button>
@@ -1555,6 +1535,71 @@ function MinutesPage() {
               </ul>
             </div>
           </div>
+          {compareSection && (
+            <div
+              style={{
+                borderTop: '1px dashed var(--border)',
+                paddingTop: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+              }}
+            >
+              <strong style={{ fontSize: '12px' }}>
+                {compareSection === 'agenda'
+                  ? '[주요 안건] 비교 후 선택'
+                  : compareSection === 'meeting_content'
+                    ? '[회의 내용] 비교 후 선택'
+                    : '[회의 결과] 비교 후 선택'}
+              </strong>
+              <div className="status-info-group">
+                <span className="status-info-label">기존 작성</span>
+                <textarea
+                  className="minutes-textarea"
+                  value={compareOriginalText}
+                  readOnly
+                  style={{ minHeight: '90px', fontSize: '12px', padding: '10px' }}
+                />
+              </div>
+              <div className="status-info-group">
+                <span className="status-info-label">AI 제안</span>
+                <textarea
+                  className="minutes-textarea"
+                  value={compareAiText}
+                  readOnly
+                  style={{ minHeight: '90px', fontSize: '12px', padding: '10px' }}
+                />
+              </div>
+              <div className="status-info-group">
+                <span className="status-info-label">병합 결과(중복 제외)</span>
+                <textarea
+                  className="minutes-textarea"
+                  value={compareMergedText}
+                  readOnly
+                  style={{ minHeight: '90px', fontSize: '12px', padding: '10px' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <button
+                  className="nav-menu-item"
+                  type="button"
+                  onClick={() => setCompareSection(null)}
+                >
+                  기존 유지
+                </button>
+                <button className="nav-menu-item" type="button" onClick={applyReplaceWithAi}>
+                  AI로 교체
+                </button>
+                <button
+                  className="linear-primary-button"
+                  type="button"
+                  onClick={applyMergedSuggestion}
+                >
+                  병합 반영
+                </button>
+              </div>
+            </div>
+          )}
         </aside>
       </div>
     </div>
