@@ -14,7 +14,10 @@ import {
   acquireMinutesLock as acquireMinutesLockApi,
   getMinutesLock as getMinutesLockApi,
   releaseMinutesLock as releaseMinutesLockApi,
+  suggestMinutesFromTranscript,
+  transcribeChunk,
   type MinutesLockDto,
+  type MinutesSuggestionResult,
 } from '../api';
 
 type MinutesDraft = {
@@ -30,6 +33,7 @@ type MinutesDraft = {
 };
 
 type MinutesField = 'agenda' | 'meetingContent' | 'meetingResult';
+type MinutesSectionKey = 'agenda' | 'meeting_content' | 'meeting_result';
 
 type EditLock = {
   holderUserId: string;
@@ -60,6 +64,33 @@ function formatDateToken(dateInput: string, fallbackDate: Date) {
     if (yyyy && mm && dd) return `${yyyy}${mm}${dd}`;
   }
   return format(fallbackDate, 'yyyyMMdd');
+}
+
+function normalizeBulletText(value: string) {
+  return value
+    .trim()
+    .replace(/^[-*•◦▪▫]\s*/, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function mergeBulletPoints(existingText: string, suggestions: string[]) {
+  const existingLines = existingText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const known = new Set(existingLines.map(normalizeBulletText));
+  const appended: string[] = [];
+  for (const item of suggestions) {
+    const normalized = normalizeBulletText(item);
+    if (!normalized || known.has(normalized)) continue;
+    known.add(normalized);
+    appended.push(`- ${item.trim()}`);
+  }
+  if (appended.length === 0) {
+    return existingText;
+  }
+  return [existingText.trim(), ...appended].filter((chunk) => chunk.length > 0).join('\n');
 }
 
 function MinutesPage() {
@@ -97,9 +128,21 @@ function MinutesPage() {
   const [activeLock, setActiveLock] = useState<EditLock | null>(null);
   const [attendeeQuery, setAttendeeQuery] = useState('');
   const [selectedAttendees, setSelectedAttendees] = useState<AppUser[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [transcriptText, setTranscriptText] = useState('');
+  const [summarySuggestion, setSummarySuggestion] = useState<MinutesSuggestionResult>({
+    agenda: [],
+    meeting_content: [],
+    meeting_result: [],
+  });
   const historyRef = useRef<MinutesDraft[]>([]);
   const lastSavedKeyRef = useRef('');
   const isSavingRef = useRef(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const transcriptQueueRef = useRef(Promise.resolve());
 
   const agendaRef = useRef<HTMLTextAreaElement>(null);
   const meetingContentRef = useRef<HTMLTextAreaElement>(null);
@@ -227,6 +270,13 @@ function MinutesPage() {
       void releaseLock();
     };
   }, [isEditing, releaseLock]);
+
+  useEffect(() => {
+    return () => {
+      mediaRecorderRef.current?.stop();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
 
   const pushHistory = useCallback((snapshot: MinutesDraft) => {
     historyRef.current = [...historyRef.current, snapshot].slice(-MAX_UNDO_HISTORY);
@@ -549,38 +599,233 @@ function MinutesPage() {
     const source = document.getElementById('minutes-page-export-root');
     if (!source) return;
 
-    const popup = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
-    if (!popup) {
-      setSaveMessage('PDF 저장 창을 열 수 없습니다. 팝업 차단을 확인하세요.');
-      return;
-    }
-    const copiedStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
-      .map((node) => node.outerHTML)
-      .join('\n');
-
-    popup.document.open();
-    popup.document.write(`
-      <!doctype html>
-      <html lang="ko">
-        <head>
-          <meta charset="utf-8" />
-          <title>${baseName}.pdf</title>
-          ${copiedStyles}
-          <style>
-            body { margin: 0; background: #fff; }
-            #minutes-page-export-root { max-width: 960px; margin: 0 auto; padding: 24px 0 40px; }
-          </style>
-        </head>
-        <body>${source.outerHTML}</body>
-      </html>
-    `);
-    popup.document.close();
-    popup.focus();
-    popup.onload = () => {
-      popup.print();
-      popup.close();
+    const openPrintFallback = () => {
+      const popup = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
+      if (!popup) {
+        setSaveMessage('PDF 저장 창을 열 수 없습니다. 팝업 차단을 확인하세요.');
+        return;
+      }
+      const copiedStyles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+        .map((node) => node.outerHTML)
+        .join('\n');
+      popup.document.open();
+      popup.document.write(`
+        <!doctype html>
+        <html lang="ko">
+          <head>
+            <meta charset="utf-8" />
+            <title>${baseName}.pdf</title>
+            ${copiedStyles}
+            <style>
+              body { margin: 0; background: #fff; }
+              .pdf-export-toolbar {
+                position: sticky; top: 0; z-index: 10; display: flex; justify-content: flex-end;
+                gap: 8px; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; background: #fff;
+              }
+              .pdf-export-button {
+                border: 1px solid #d0d5dd; background: #fff; color: #344054; border-radius: 8px;
+                height: 32px; padding: 0 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+              }
+              #minutes-page-export-root { max-width: 960px; margin: 0 auto; padding: 24px 0 40px; }
+              @media print { .pdf-export-toolbar { display: none; } }
+            </style>
+          </head>
+          <body>
+            <div class="pdf-export-toolbar">
+              <button class="pdf-export-button" onclick="window.print()">PDF로 저장</button>
+              <button class="pdf-export-button" onclick="window.close()">닫기</button>
+            </div>
+            ${source.outerHTML}
+          </body>
+        </html>
+      `);
+      popup.document.close();
+      popup.focus();
+      setSaveMessage('PDF 저장창을 열었습니다.');
     };
+
+    void (async () => {
+      try {
+        setSaveMessage('PDF 생성 중입니다...');
+        const [{ jsPDF }] = await Promise.all([import('jspdf')]);
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4',
+          compress: true,
+        });
+
+        const exportRoot = source.cloneNode(true) as HTMLElement;
+        exportRoot.style.maxWidth = '100%';
+        exportRoot.style.margin = '0';
+        exportRoot.style.padding = '0';
+
+        const sandbox = document.createElement('div');
+        sandbox.style.position = 'fixed';
+        sandbox.style.left = '-99999px';
+        sandbox.style.top = '0';
+        sandbox.style.width = '794px';
+        sandbox.style.background = '#ffffff';
+        sandbox.appendChild(exportRoot);
+        document.body.appendChild(sandbox);
+
+        try {
+          await pdf.html(exportRoot, {
+            margin: [8, 8, 8, 8],
+            autoPaging: 'text',
+            html2canvas: {
+              backgroundColor: '#ffffff',
+              scale: 1,
+              useCORS: true,
+              logging: false,
+            },
+          });
+        } finally {
+          sandbox.remove();
+        }
+
+        pdf.save(`${baseName}.pdf`);
+        setSaveMessage('PDF 다운로드가 시작되었습니다.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'PDF 저장에 실패했습니다.';
+        if (String(message).toLowerCase().includes('color')) {
+          openPrintFallback();
+          return;
+        }
+        setSaveMessage(`PDF 저장 실패: ${message}`);
+        window.alert(`PDF 저장에 실패했습니다.\n${message}`);
+      }
+    })();
   };
+
+  const blobToBase64 = async (blob: Blob): Promise<string> => {
+    const buffer = await blob.arrayBuffer();
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    return window.btoa(binary);
+  };
+
+  const queueTranscription = useCallback(
+    (blob: Blob) => {
+      transcriptQueueRef.current = transcriptQueueRef.current
+        .then(async () => {
+          if (blob.size === 0) return;
+          setIsTranscribing(true);
+          const base64 = await blobToBase64(blob);
+          const result = await transcribeChunk({
+            audio_base64: base64,
+            mime_type: blob.type || 'audio/webm',
+            previous_text: transcriptText.slice(-1200),
+          });
+          const chunk = result.text.trim();
+          if (!chunk) return;
+          setTranscriptText((prev) => (prev ? `${prev}\n${chunk}` : chunk));
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : '전사 중 오류가 발생했습니다.';
+          setSaveMessage(message);
+        })
+        .finally(() => {
+          setIsTranscribing(false);
+        });
+    },
+    [transcriptText]
+  );
+
+  const handleStartRecording = useCallback(() => {
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream, {
+          mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+            ? 'audio/webm;codecs=opus'
+            : 'audio/webm',
+        });
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            queueTranscription(event.data);
+          }
+        };
+        recorder.onstop = () => {
+          stream.getTracks().forEach((track) => track.stop());
+          mediaStreamRef.current = null;
+          mediaRecorderRef.current = null;
+          setIsRecording(false);
+        };
+        mediaStreamRef.current = stream;
+        mediaRecorderRef.current = recorder;
+        recorder.start(2500);
+        setIsRecording(true);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '마이크 권한을 확인해 주세요.';
+        setSaveMessage(`녹음 시작 실패: ${message}`);
+      }
+    })();
+  }, [queueTranscription]);
+
+  const handleStopRecording = useCallback(() => {
+    mediaRecorderRef.current?.stop();
+    setIsRecording(false);
+  }, []);
+
+  const handleGenerateMinutes = useCallback(() => {
+    void (async () => {
+      if (!transcriptText.trim()) {
+        setSaveMessage('전사 텍스트가 비어있습니다.');
+        return;
+      }
+      try {
+        setIsGeneratingSummary(true);
+        const result = await suggestMinutesFromTranscript({
+          transcript: transcriptText,
+          existing_agenda: draft.agenda,
+          existing_meeting_content: draft.meetingContent,
+          existing_meeting_result: draft.meetingResult,
+        });
+        setSummarySuggestion(result);
+        setSaveMessage('AI 제안이 생성되었습니다.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'AI 제안 생성에 실패했습니다.';
+        setSaveMessage(message);
+      } finally {
+        setIsGeneratingSummary(false);
+      }
+    })();
+  }, [draft.agenda, draft.meetingContent, draft.meetingResult, transcriptText]);
+
+  const applySuggestionSection = useCallback(
+    (section: MinutesSectionKey) => {
+      if (!isEditing) {
+        setSaveMessage('수정 모드에서만 반영할 수 있습니다.');
+        return;
+      }
+      if (section === 'agenda') {
+        const merged = mergeBulletPoints(draft.agenda, summarySuggestion.agenda);
+        updateDraft({ agenda: merged });
+        return;
+      }
+      if (section === 'meeting_content') {
+        const merged = mergeBulletPoints(draft.meetingContent, summarySuggestion.meeting_content);
+        updateDraft({ meetingContent: merged });
+        return;
+      }
+      const merged = mergeBulletPoints(draft.meetingResult, summarySuggestion.meeting_result);
+      updateDraft({ meetingResult: merged });
+    },
+    [
+      draft.agenda,
+      draft.meetingContent,
+      draft.meetingResult,
+      isEditing,
+      summarySuggestion,
+      updateDraft,
+    ]
+  );
 
   const handleGoBack = () => {
     if (window.history.length > 1) {
@@ -609,391 +854,539 @@ function MinutesPage() {
   }
 
   return (
-    <div
-      id="minutes-page-export-root"
-      style={{ maxWidth: '960px', margin: '0 auto', padding: '24px 0 40px' }}
-    >
-      <section
+    <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px 0 40px' }}>
+      <div
         style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '12px',
-          gap: '12px',
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 340px)',
+          gap: '16px',
+          alignItems: 'start',
         }}
       >
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <select
-            value={draft.label}
-            onChange={(e) => updateDraft({ label: e.target.value })}
-            disabled={!isEditing}
-            aria-label="라벨 선택"
+        <div id="minutes-page-export-root" style={{ maxWidth: '960px' }}>
+          <section
             style={{
-              height: '28px',
-              minWidth: '110px',
-              maxWidth: '140px',
-              padding: '0 8px',
-              borderRadius: '8px',
-              border: '1px solid rgba(107, 86, 62, 0.22)',
-              background: 'rgba(16, 18, 24, 0.06)',
-              color: '#6b563e',
-              fontSize: '12px',
-              outline: 'none',
-            }}
-          >
-            {reservationLabels.map((label) => (
-              <option key={label} value={label}>
-                {label}
-              </option>
-            ))}
-          </select>
-          {lockByOther && (
-            <p className="status-info-value" style={{ color: '#d92d20', margin: 0 }}>
-              {activeLock?.holderName}가 수정중입니다.
-            </p>
-          )}
-          {!lockByOther && saveMessage && (
-            <p
-              className="status-info-value"
-              style={{
-                color:
-                  saveMessage.includes('실패') ||
-                  saveMessage.includes('올바르지') ||
-                  saveMessage.includes('필수')
-                    ? '#d92d20'
-                    : '#18794e',
-                margin: 0,
-              }}
-            >
-              {saveMessage}
-            </p>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <button
-            className="page-mode-button"
-            type="button"
-            onClick={handleDownloadMarkdown}
-            aria-label="마크다운 저장"
-            title="마크다운 저장"
-            style={{
-              whiteSpace: 'nowrap',
-              background: 'rgba(16, 18, 24, 0.08)',
-              color: '#6b563e',
-              border: '1px solid rgba(107, 86, 62, 0.22)',
-              borderRadius: '8px',
-              width: 'auto',
-              height: '28px',
-              display: 'inline-flex',
+              display: 'flex',
+              justifyContent: 'space-between',
               alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              padding: '0 10px',
-              fontSize: '12px',
+              marginBottom: '12px',
+              gap: '12px',
             }}
           >
-            <AppIcon name="download" style={{ width: '14px', height: '14px' }} />
-            마크다운 저장
-          </button>
-          <button
-            className="page-mode-button"
-            type="button"
-            onClick={handleDownloadPdf}
-            style={{
-              whiteSpace: 'nowrap',
-              background: 'rgba(16, 18, 24, 0.08)',
-              color: '#6b563e',
-              border: '1px solid rgba(107, 86, 62, 0.22)',
-              borderRadius: '8px',
-              padding: '0 10px',
-              height: '28px',
-              fontSize: '12px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <AppIcon name="download" style={{ width: '14px', height: '14px' }} />
-            PDF 저장
-          </button>
-          <button
-            className="page-mode-button"
-            type="button"
-            onClick={handleEditToggle}
-            disabled={lockByOther && !isEditing}
-            title={lockTooltip}
-            style={{
-              whiteSpace: 'nowrap',
-              background: 'rgba(16, 18, 24, 0.08)',
-              color: '#6b563e',
-              border: '1px solid rgba(107, 86, 62, 0.22)',
-              borderRadius: '8px',
-              padding: '0 10px',
-              height: '28px',
-              fontSize: '12px',
-              display: 'inline-flex',
-              alignItems: 'center',
-            }}
-          >
-            {isEditing ? '수정완료' : '수정'}
-          </button>
-          <button
-            className="page-mode-button"
-            type="button"
-            onClick={handleGoBack}
-            style={{
-              whiteSpace: 'nowrap',
-              background: 'rgba(16, 18, 24, 0.08)',
-              color: '#6b563e',
-              border: '1px solid rgba(107, 86, 62, 0.22)',
-              borderRadius: '8px',
-              padding: '0 10px',
-              height: '28px',
-              fontSize: '12px',
-              display: 'inline-flex',
-              alignItems: 'center',
-            }}
-          >
-            돌아가기
-          </button>
-        </div>
-      </section>
-
-      <section
-        style={{
-          background: '#ffffff',
-          border: '1px solid var(--border)',
-          borderRadius: '12px',
-          padding: '20px',
-        }}
-      >
-        <textarea
-          ref={titleRef}
-          className="minutes-textarea"
-          rows={1}
-          value={draft.title}
-          onChange={(e) => updateDraft({ title: e.target.value })}
-          disabled={!isEditing}
-          placeholder="회의록 제목"
-          style={{
-            minHeight: '44px',
-            width: '100%',
-            padding: '10px 12px',
-            fontSize: '24px',
-            fontWeight: 700,
-            lineHeight: 1.35,
-            resize: 'none',
-            overflow: 'hidden',
-            borderRadius: '8px',
-            background: '#fcfcfd',
-            border: '1px solid #e7e1da',
-            marginBottom: '18px',
-          }}
-        />
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-            gap: '10px',
-            marginBottom: '16px',
-          }}
-        >
-          <div className="status-info-group">
-            <label className="status-info-label">날짜</label>
-            <input
-              className="linear-input"
-              type="date"
-              value={draft.dateInput}
-              onChange={(e) => updateDraft({ dateInput: e.target.value })}
-              disabled
-            />
-          </div>
-          <div className="status-info-group">
-            <label className="status-info-label">시작 시간</label>
-            <input
-              className="linear-input"
-              type="time"
-              value={draft.startTimeInput}
-              onChange={(e) => updateDraft({ startTimeInput: e.target.value })}
-              disabled
-            />
-          </div>
-          <div className="status-info-group">
-            <label className="status-info-label">종료 시간</label>
-            <input
-              className="linear-input"
-              type="time"
-              value={draft.endTimeInput}
-              onChange={(e) => updateDraft({ endTimeInput: e.target.value })}
-              disabled
-            />
-          </div>
-        </div>
-
-        <div className="status-info-group" style={{ marginBottom: '16px' }}>
-          <label className="status-info-label">내부 참석자</label>
-          <div className="attendee-token-input">
-            {selectedAttendees.map((attendee) => (
-              <span
-                key={attendee.id}
-                className="room-capacity-tag"
-                style={{ cursor: isEditing ? 'pointer' : 'default' }}
-                onClick={() => {
-                  if (!isEditing) return;
-                  setSelectedAttendees((prev) => prev.filter((item) => item.id !== attendee.id));
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <select
+                value={draft.label}
+                onChange={(e) => updateDraft({ label: e.target.value })}
+                disabled={!isEditing}
+                aria-label="라벨 선택"
+                style={{
+                  height: '28px',
+                  minWidth: '110px',
+                  maxWidth: '140px',
+                  padding: '0 8px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(107, 86, 62, 0.22)',
+                  background: 'rgba(16, 18, 24, 0.06)',
+                  color: '#6b563e',
+                  fontSize: '12px',
+                  outline: 'none',
                 }}
               >
-                {attendee.name}
-                {isEditing ? ' ✕' : ''}
-              </span>
-            ))}
-            <input
-              className="attendee-token-field"
-              value={attendeeQuery}
-              placeholder={selectedAttendees.length === 0 ? '이름 입력...' : ''}
-              onChange={(e) => setAttendeeQuery(e.target.value)}
-              disabled={!isEditing}
-            />
-          </div>
-          {isEditing && filteredUsers.length > 0 && (
-            <div
-              className="user-dropdown-popover"
-              style={{
-                position: 'static',
-                width: '100%',
-                marginTop: '8px',
-                boxShadow: 'none',
-                border: '1px solid var(--border)',
-              }}
-            >
-              {filteredUsers.slice(0, 4).map((user) => (
-                <button
-                  key={user.id}
-                  className="popover-item"
-                  onClick={() => {
-                    setSelectedAttendees((prev) => [...prev, user]);
-                    setAttendeeQuery('');
+                {reservationLabels.map((label) => (
+                  <option key={label} value={label}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              {lockByOther && (
+                <p className="status-info-value" style={{ color: '#d92d20', margin: 0 }}>
+                  {activeLock?.holderName}가 수정중입니다.
+                </p>
+              )}
+              {!lockByOther && saveMessage && (
+                <p
+                  className="status-info-value"
+                  style={{
+                    color:
+                      saveMessage.includes('실패') ||
+                      saveMessage.includes('올바르지') ||
+                      saveMessage.includes('필수')
+                        ? '#d92d20'
+                        : '#18794e',
+                    margin: 0,
                   }}
                 >
-                  {user.name} ({user.email})
-                </button>
-              ))}
+                  {saveMessage}
+                </p>
+              )}
             </div>
-          )}
-        </div>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <button
+                className="page-mode-button"
+                type="button"
+                onClick={handleDownloadMarkdown}
+                aria-label="마크다운 저장"
+                title="마크다운 저장"
+                style={{
+                  whiteSpace: 'nowrap',
+                  background: 'rgba(16, 18, 24, 0.08)',
+                  color: '#6b563e',
+                  border: '1px solid rgba(107, 86, 62, 0.22)',
+                  borderRadius: '8px',
+                  width: 'auto',
+                  height: '28px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  padding: '0 10px',
+                  fontSize: '12px',
+                }}
+              >
+                <AppIcon name="download" style={{ width: '14px', height: '14px' }} />
+                마크다운 저장
+              </button>
+              <button
+                className="page-mode-button"
+                type="button"
+                onClick={handleDownloadPdf}
+                style={{
+                  whiteSpace: 'nowrap',
+                  background: 'rgba(16, 18, 24, 0.08)',
+                  color: '#6b563e',
+                  border: '1px solid rgba(107, 86, 62, 0.22)',
+                  borderRadius: '8px',
+                  padding: '0 10px',
+                  height: '28px',
+                  fontSize: '12px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <AppIcon name="download" style={{ width: '14px', height: '14px' }} />
+                PDF 저장
+              </button>
+              <button
+                className="page-mode-button"
+                type="button"
+                onClick={handleEditToggle}
+                disabled={lockByOther && !isEditing}
+                title={lockTooltip}
+                style={{
+                  whiteSpace: 'nowrap',
+                  background: 'rgba(16, 18, 24, 0.08)',
+                  color: '#6b563e',
+                  border: '1px solid rgba(107, 86, 62, 0.22)',
+                  borderRadius: '8px',
+                  padding: '0 10px',
+                  height: '28px',
+                  fontSize: '12px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
+              >
+                {isEditing ? '수정완료' : '수정'}
+              </button>
+              <button
+                className="page-mode-button"
+                type="button"
+                onClick={handleGoBack}
+                style={{
+                  whiteSpace: 'nowrap',
+                  background: 'rgba(16, 18, 24, 0.08)',
+                  color: '#6b563e',
+                  border: '1px solid rgba(107, 86, 62, 0.22)',
+                  borderRadius: '8px',
+                  padding: '0 10px',
+                  height: '28px',
+                  fontSize: '12px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
+              >
+                돌아가기
+              </button>
+            </div>
+          </section>
 
-        <div className="status-info-group" style={{ marginBottom: '8px' }}>
-          <label className="status-info-label">외부 참석자</label>
-          <input
-            className="linear-input"
-            value={draft.externalAttendees}
-            onChange={(e) => updateDraft({ externalAttendees: e.target.value })}
-            disabled={!isEditing}
-          />
-        </div>
-
-        <div style={{ borderTop: '1px dashed var(--border)', margin: '18px 0' }} />
-
-        <div className="status-info-group" style={{ marginBottom: '16px' }}>
-          <div
+          <section
             style={{
-              fontSize: '18px',
-              fontWeight: 700,
-              color: '#6c4f2f',
-              marginBottom: '8px',
-              background: '#fff1d6',
-              border: '1px solid #f2ddb2',
-              borderRadius: '8px',
-              padding: '8px 12px',
+              background: '#ffffff',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              padding: '20px',
             }}
           >
-            🧭 주요 안건
-          </div>
-          <textarea
-            ref={agendaRef}
-            className="minutes-textarea"
-            style={{
-              minHeight: '120px',
-              padding: '14px',
-              fontSize: '15px',
-              resize: 'none',
-              overflow: 'hidden',
-              borderRadius: '8px',
-            }}
-            value={draft.agenda}
-            onChange={(e) => updateDraft({ agenda: e.target.value })}
-            onKeyDown={handleEditorKeyDown('agenda')}
-            disabled={!isEditing}
-          />
-        </div>
+            <textarea
+              ref={titleRef}
+              className="minutes-textarea"
+              rows={1}
+              value={draft.title}
+              onChange={(e) => updateDraft({ title: e.target.value })}
+              disabled={!isEditing}
+              placeholder="회의록 제목"
+              style={{
+                minHeight: '44px',
+                width: '100%',
+                padding: '10px 12px',
+                fontSize: '24px',
+                fontWeight: 700,
+                lineHeight: 1.35,
+                resize: 'none',
+                overflow: 'hidden',
+                borderRadius: '8px',
+                background: '#fcfcfd',
+                border: '1px solid #e7e1da',
+                marginBottom: '18px',
+              }}
+            />
 
-        <div className="status-info-group" style={{ marginBottom: '16px' }}>
-          <div
-            style={{
-              fontSize: '18px',
-              fontWeight: 700,
-              color: '#2d5870',
-              marginBottom: '8px',
-              background: '#e8f4ff',
-              border: '1px solid #cfe4f6',
-              borderRadius: '8px',
-              padding: '8px 12px',
-            }}
-          >
-            📝 회의 내용
-          </div>
-          <textarea
-            ref={meetingContentRef}
-            className="minutes-textarea"
-            style={{
-              minHeight: '180px',
-              padding: '14px',
-              fontSize: '15px',
-              resize: 'none',
-              overflow: 'hidden',
-              borderRadius: '8px',
-            }}
-            value={draft.meetingContent}
-            onChange={(e) => updateDraft({ meetingContent: e.target.value })}
-            onKeyDown={handleEditorKeyDown('meetingContent')}
-            disabled={!isEditing}
-          />
-        </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+                gap: '10px',
+                marginBottom: '16px',
+              }}
+            >
+              <div className="status-info-group">
+                <label className="status-info-label">날짜</label>
+                <input
+                  className="linear-input"
+                  type="date"
+                  value={draft.dateInput}
+                  onChange={(e) => updateDraft({ dateInput: e.target.value })}
+                  disabled
+                />
+              </div>
+              <div className="status-info-group">
+                <label className="status-info-label">시작 시간</label>
+                <input
+                  className="linear-input"
+                  type="time"
+                  value={draft.startTimeInput}
+                  onChange={(e) => updateDraft({ startTimeInput: e.target.value })}
+                  disabled
+                />
+              </div>
+              <div className="status-info-group">
+                <label className="status-info-label">종료 시간</label>
+                <input
+                  className="linear-input"
+                  type="time"
+                  value={draft.endTimeInput}
+                  onChange={(e) => updateDraft({ endTimeInput: e.target.value })}
+                  disabled
+                />
+              </div>
+            </div>
 
-        <div className="status-info-group">
-          <div
-            style={{
-              fontSize: '18px',
-              fontWeight: 700,
-              color: '#355f3b',
-              marginBottom: '8px',
-              background: '#ebf8e6',
-              border: '1px solid #d0e8c6',
-              borderRadius: '8px',
-              padding: '8px 12px',
-            }}
-          >
-            ✅ 회의 결과
+            <div className="status-info-group" style={{ marginBottom: '16px' }}>
+              <label className="status-info-label">내부 참석자</label>
+              <div className="attendee-token-input">
+                {selectedAttendees.map((attendee) => (
+                  <span
+                    key={attendee.id}
+                    className="room-capacity-tag"
+                    style={{ cursor: isEditing ? 'pointer' : 'default' }}
+                    onClick={() => {
+                      if (!isEditing) return;
+                      setSelectedAttendees((prev) =>
+                        prev.filter((item) => item.id !== attendee.id)
+                      );
+                    }}
+                  >
+                    {attendee.name}
+                    {isEditing ? ' ✕' : ''}
+                  </span>
+                ))}
+                <input
+                  className="attendee-token-field"
+                  value={attendeeQuery}
+                  placeholder={selectedAttendees.length === 0 ? '이름 입력...' : ''}
+                  onChange={(e) => setAttendeeQuery(e.target.value)}
+                  disabled={!isEditing}
+                />
+              </div>
+              {isEditing && filteredUsers.length > 0 && (
+                <div
+                  className="user-dropdown-popover"
+                  style={{
+                    position: 'static',
+                    width: '100%',
+                    marginTop: '8px',
+                    boxShadow: 'none',
+                    border: '1px solid var(--border)',
+                  }}
+                >
+                  {filteredUsers.slice(0, 4).map((user) => (
+                    <button
+                      key={user.id}
+                      className="popover-item"
+                      onClick={() => {
+                        setSelectedAttendees((prev) => [...prev, user]);
+                        setAttendeeQuery('');
+                      }}
+                    >
+                      {user.name} ({user.email})
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="status-info-group" style={{ marginBottom: '8px' }}>
+              <label className="status-info-label">외부 참석자</label>
+              <input
+                className="linear-input"
+                value={draft.externalAttendees}
+                onChange={(e) => updateDraft({ externalAttendees: e.target.value })}
+                disabled={!isEditing}
+              />
+            </div>
+
+            <div style={{ borderTop: '1px dashed var(--border)', margin: '18px 0' }} />
+
+            <div className="status-info-group" style={{ marginBottom: '16px' }}>
+              <div
+                style={{
+                  fontSize: '18px',
+                  fontWeight: 700,
+                  color: '#6c4f2f',
+                  marginBottom: '8px',
+                  background: '#fff1d6',
+                  border: '1px solid #f2ddb2',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                }}
+              >
+                🧭 주요 안건
+              </div>
+              <textarea
+                ref={agendaRef}
+                className="minutes-textarea"
+                style={{
+                  minHeight: '120px',
+                  padding: '14px',
+                  fontSize: '15px',
+                  resize: 'none',
+                  overflow: 'hidden',
+                  borderRadius: '8px',
+                }}
+                value={draft.agenda}
+                onChange={(e) => updateDraft({ agenda: e.target.value })}
+                onKeyDown={handleEditorKeyDown('agenda')}
+                disabled={!isEditing}
+              />
+            </div>
+
+            <div className="status-info-group" style={{ marginBottom: '16px' }}>
+              <div
+                style={{
+                  fontSize: '18px',
+                  fontWeight: 700,
+                  color: '#2d5870',
+                  marginBottom: '8px',
+                  background: '#e8f4ff',
+                  border: '1px solid #cfe4f6',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                }}
+              >
+                📝 회의 내용
+              </div>
+              <textarea
+                ref={meetingContentRef}
+                className="minutes-textarea"
+                style={{
+                  minHeight: '180px',
+                  padding: '14px',
+                  fontSize: '15px',
+                  resize: 'none',
+                  overflow: 'hidden',
+                  borderRadius: '8px',
+                }}
+                value={draft.meetingContent}
+                onChange={(e) => updateDraft({ meetingContent: e.target.value })}
+                onKeyDown={handleEditorKeyDown('meetingContent')}
+                disabled={!isEditing}
+              />
+            </div>
+
+            <div className="status-info-group">
+              <div
+                style={{
+                  fontSize: '18px',
+                  fontWeight: 700,
+                  color: '#355f3b',
+                  marginBottom: '8px',
+                  background: '#ebf8e6',
+                  border: '1px solid #d0e8c6',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                }}
+              >
+                ✅ 회의 결과
+              </div>
+              <textarea
+                ref={meetingResultRef}
+                className="minutes-textarea"
+                style={{
+                  minHeight: '140px',
+                  padding: '14px',
+                  fontSize: '15px',
+                  resize: 'none',
+                  overflow: 'hidden',
+                  borderRadius: '8px',
+                }}
+                value={draft.meetingResult}
+                onChange={(e) => updateDraft({ meetingResult: e.target.value })}
+                onKeyDown={handleEditorKeyDown('meetingResult')}
+                disabled={!isEditing}
+              />
+            </div>
+          </section>
+        </div>
+        <aside
+          style={{
+            position: 'sticky',
+            top: '16px',
+            background: '#ffffff',
+            border: '1px solid var(--border)',
+            borderRadius: '12px',
+            padding: '14px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+          }}
+        >
+          <div>
+            <h3 style={{ margin: 0, fontSize: '14px' }}>실시간 녹음/전사</h3>
+            <p style={{ margin: '4px 0 0', color: 'var(--text-soft)', fontSize: '12px' }}>
+              gpt-4o-transcript
+            </p>
           </div>
-          <textarea
-            ref={meetingResultRef}
-            className="minutes-textarea"
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {!isRecording ? (
+              <button className="nav-menu-item" type="button" onClick={handleStartRecording}>
+                녹음 시작
+              </button>
+            ) : (
+              <button className="nav-menu-item" type="button" onClick={handleStopRecording}>
+                녹음 중지
+              </button>
+            )}
+            <button
+              className="nav-menu-item"
+              type="button"
+              onClick={() => setTranscriptText('')}
+              disabled={isRecording || isTranscribing}
+            >
+              전사 초기화
+            </button>
+          </div>
+          <div
             style={{
               minHeight: '140px',
-              padding: '14px',
-              fontSize: '15px',
-              resize: 'none',
-              overflow: 'hidden',
+              maxHeight: '220px',
+              overflowY: 'auto',
+              background: '#fafafb',
+              border: '1px solid var(--border)',
               borderRadius: '8px',
+              padding: '10px',
+              fontSize: '12px',
+              lineHeight: 1.5,
+              whiteSpace: 'pre-wrap',
             }}
-            value={draft.meetingResult}
-            onChange={(e) => updateDraft({ meetingResult: e.target.value })}
-            onKeyDown={handleEditorKeyDown('meetingResult')}
-            disabled={!isEditing}
-          />
-        </div>
-      </section>
+          >
+            {transcriptText || '녹음을 시작하면 전사 텍스트가 실시간으로 표시됩니다.'}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-soft)' }}>
+              {isTranscribing ? '전사 중...' : isRecording ? '녹음 중' : '대기 중'}
+            </span>
+            <button
+              className="linear-primary-button"
+              type="button"
+              onClick={handleGenerateMinutes}
+              disabled={
+                isRecording || isTranscribing || isGeneratingSummary || !transcriptText.trim()
+              }
+              style={{ width: 'auto', padding: '0 12px', height: '30px' }}
+            >
+              {isGeneratingSummary ? '생성 중...' : 'AI 불릿 생성'}
+            </button>
+          </div>
+          <div
+            style={{
+              borderTop: '1px dashed var(--border)',
+              paddingTop: '10px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+            }}
+          >
+            <div>
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <strong style={{ fontSize: '12px' }}>[주요 안건] 제안</strong>
+                <button
+                  className="nav-menu-item"
+                  type="button"
+                  onClick={() => applySuggestionSection('agenda')}
+                >
+                  반영
+                </button>
+              </div>
+              <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
+                {summarySuggestion.agenda.map((item, index) => (
+                  <li key={`agenda-${index}`}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <strong style={{ fontSize: '12px' }}>[회의 내용] 제안</strong>
+                <button
+                  className="nav-menu-item"
+                  type="button"
+                  onClick={() => applySuggestionSection('meeting_content')}
+                >
+                  반영
+                </button>
+              </div>
+              <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
+                {summarySuggestion.meeting_content.map((item, index) => (
+                  <li key={`content-${index}`}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <strong style={{ fontSize: '12px' }}>[회의 결과] 제안</strong>
+                <button
+                  className="nav-menu-item"
+                  type="button"
+                  onClick={() => applySuggestionSection('meeting_result')}
+                >
+                  반영
+                </button>
+              </div>
+              <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
+                {summarySuggestion.meeting_result.map((item, index) => (
+                  <li key={`result-${index}`}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }

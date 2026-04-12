@@ -1,0 +1,36 @@
+from datetime import datetime
+from decimal import Decimal
+
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.infra.db import Base
+
+
+class UserAiQuota(Base):
+    __tablename__ = "user_ai_quotas"
+
+    user_id: Mapped[str] = mapped_column(
+        String(50),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    monthly_limit_usd: Mapped[Decimal] = mapped_column(
+        Numeric(10, 4),
+        nullable=False,
+        default=Decimal("1.0000"),
+        server_default="1.0000",
+    )
+    used_usd: Mapped[Decimal] = mapped_column(
+        Numeric(10, 4),
+        nullable=False,
+        default=Decimal("0.0000"),
+        server_default="0.0000",
+    )
+    period_month: Mapped[str] = mapped_column(String(7), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

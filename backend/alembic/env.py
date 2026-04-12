@@ -7,7 +7,15 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.settings import DATABASE_URL
-from app.infra import reservation, reservation_attendee, reservation_label, room, timetable, user  # noqa: F401
+from app.infra import (  # noqa: F401
+    reservation,
+    reservation_attendee,
+    reservation_label,
+    room,
+    timetable,
+    user,
+    user_ai_quota,
+)
 from app.infra.db import Base
 
 # this is the Alembic Config object, which provides

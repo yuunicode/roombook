@@ -22,3 +22,5 @@ ADMIN_NAME = os.getenv("ADMIN_NAME", "admin").strip()
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "admin@ecminer.com").strip().lower()
 ADMIN_DEPARTMENT = os.getenv("ADMIN_DEPARTMENT", "R&D센터").strip()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "ecminer")
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()

@@ -95,6 +95,29 @@ export type MinutesLockDto = {
   expires_at: string;
 };
 
+type TranscribeChunkPayload = {
+  audio_base64: string;
+  mime_type?: string;
+  previous_text?: string;
+};
+
+export type TranscribeChunkResult = {
+  text: string;
+};
+
+type MinutesSuggestionPayload = {
+  transcript: string;
+  existing_agenda?: string;
+  existing_meeting_content?: string;
+  existing_meeting_result?: string;
+};
+
+export type MinutesSuggestionResult = {
+  agenda: string[];
+  meeting_content: string[];
+  meeting_result: string[];
+};
+
 const API_BASE = '/api';
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -275,5 +298,23 @@ export async function acquireMinutesLock(
 export async function releaseMinutesLock(reservationId: string): Promise<void> {
   await requestJson<void>(`/reservations/${reservationId}/minutes-lock`, {
     method: 'DELETE',
+  });
+}
+
+export async function transcribeChunk(
+  payload: TranscribeChunkPayload
+): Promise<TranscribeChunkResult> {
+  return requestJson<TranscribeChunkResult>('/ai/transcribe-chunk', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function suggestMinutesFromTranscript(
+  payload: MinutesSuggestionPayload
+): Promise<MinutesSuggestionResult> {
+  return requestJson<MinutesSuggestionResult>('/ai/suggest-minutes', {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 }

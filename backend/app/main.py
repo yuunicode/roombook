@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.router.ai import router as ai_router
 from app.router.auth import router as auth_router
 from app.router.labels import router as labels_router
 from app.router.reservation import router as reservation_router
@@ -25,6 +26,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)
+app.include_router(ai_router)
 app.include_router(labels_router)
 app.include_router(rooms_router)
 app.include_router(timetable_router)

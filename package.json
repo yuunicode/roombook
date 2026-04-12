@@ -21,6 +21,8 @@
   "dependencies": {
     "@tanstack/react-query": "^5.90.20",
     "date-fns": "^4.1.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "react": "^18.3.1",
     "react-big-calendar": "^1.19.4",
     "react-day-picker": "^9.13.2",
