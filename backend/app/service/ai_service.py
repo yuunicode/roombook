@@ -16,6 +16,15 @@ GPT4O_TRANSCRIPT_INPUT_PER_1M = Decimal("2.5000")
 GPT4O_TRANSCRIPT_OUTPUT_PER_1M = Decimal("10.0000")
 GPT5_NANO_INPUT_PER_1M = Decimal("0.0500")
 GPT5_NANO_OUTPUT_PER_1M = Decimal("0.4000")
+SUPPORTED_AUDIO_FORMATS: dict[str, str] = {
+    "mp3": "audio/mpeg",
+    "mp4": "audio/mp4",
+    "mpeg": "audio/mpeg",
+    "mpga": "audio/mpeg",
+    "m4a": "audio/mp4",
+    "wav": "audio/wav",
+    "webm": "audio/webm",
+}
 
 
 @dataclass
@@ -114,6 +123,28 @@ def _require_api_key() -> DomainError | None:
     return DomainError(code="INVALID_ARGUMENT", message="OPENAI_API_KEY가 설정되지 않았습니다.")
 
 
+def _normalize_audio_format(mime_type: str | None) -> tuple[str, str] | DomainError:
+    raw = (mime_type or "audio/webm").strip().lower()
+    content_type = raw.split(";", 1)[0].strip()
+    if "/" not in content_type:
+        content_type = "audio/webm"
+
+    subtype = content_type.split("/", 1)[1].strip()
+    if subtype == "x-wav":
+        subtype = "wav"
+    if subtype == "x-m4a":
+        subtype = "m4a"
+
+    normalized_mime = SUPPORTED_AUDIO_FORMATS.get(subtype)
+    if normalized_mime is None:
+        supported = ", ".join(sorted(SUPPORTED_AUDIO_FORMATS.keys()))
+        return DomainError(
+            code="INVALID_ARGUMENT",
+            message=f"지원하지 않는 오디오 형식입니다. 지원 형식: {supported}",
+        )
+    return subtype, normalized_mime
+
+
 def transcribe_audio_chunk(
     audio_base64: str,
     mime_type: str | None,
@@ -130,17 +161,17 @@ def transcribe_audio_chunk(
     if len(audio_bytes) == 0:
         return DomainError(code="INVALID_ARGUMENT", message="빈 오디오 데이터입니다.")
 
-    content_type = (mime_type or "audio/webm").strip() or "audio/webm"
-    if "/" in content_type:
-        extension = content_type.split("/")[-1].split(";")[0].strip() or "webm"
-    else:
-        extension = "webm"
+    normalized_audio = _normalize_audio_format(mime_type)
+    if isinstance(normalized_audio, DomainError):
+        return normalized_audio
+    extension, normalized_mime_type = normalized_audio
 
     try:
         prompt = (previous_text or "").strip()[-1000:]
         gateway_result = transcribe_audio_chunk_gateway(
             audio_bytes=audio_bytes,
             extension=extension,
+            mime_type=normalized_mime_type,
             prompt=prompt if prompt else None,
         )
         input_tokens, output_tokens = _extract_usage_tokens(gateway_result.usage)

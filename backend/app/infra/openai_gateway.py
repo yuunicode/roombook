@@ -24,19 +24,20 @@ def _client() -> OpenAI:
 def transcribe_audio_chunk(
     audio_bytes: bytes,
     extension: str,
+    mime_type: str,
     prompt: str | None,
 ) -> GatewayTranscriptionResponse:
     file_name = f"chunk.{extension.strip() or 'webm'}"
     if prompt:
         response = _client().audio.transcriptions.create(
             model="gpt-4o-mini-transcribe",
-            file=(file_name, audio_bytes),
+            file=(file_name, audio_bytes, mime_type),
             prompt=prompt,
         )
     else:
         response = _client().audio.transcriptions.create(
             model="gpt-4o-mini-transcribe",
-            file=(file_name, audio_bytes),
+            file=(file_name, audio_bytes, mime_type),
         )
     return GatewayTranscriptionResponse(text=(response.text or "").strip(), usage=getattr(response, "usage", None))
 
