@@ -1,5 +1,6 @@
 import base64
 import json
+import re
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -58,6 +59,28 @@ def _sanitize_items(values: object) -> list[str]:
         seen.add(key)
         sanitized.append(normalized)
     return sanitized
+
+
+_SILENCE_LINE_PATTERN = re.compile(
+    r"^\s*(?:"
+    r"\[?\s*(?:silence|silent|mute|noise|music|침묵|무음|정적)\s*\]?"
+    r"|"
+    r"\(\s*(?:silence|silent|mute|noise|music|침묵|무음|정적)\s*\)"
+    r")\s*$",
+    re.IGNORECASE,
+)
+
+
+def _clean_transcript_text(value: str) -> str:
+    cleaned_lines: list[str] = []
+    for raw_line in value.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if _SILENCE_LINE_PATTERN.match(line):
+            continue
+        cleaned_lines.append(line)
+    return "\n".join(cleaned_lines).strip()
 
 
 def _to_decimal(value: object) -> Decimal:
@@ -174,6 +197,7 @@ def transcribe_audio_chunk(
             mime_type=normalized_mime_type,
             prompt=prompt if prompt else None,
         )
+        cleaned_text = _clean_transcript_text(gateway_result.text)
         input_tokens, output_tokens = _extract_usage_tokens(gateway_result.usage)
         usd_cost = _calc_usd_cost(
             input_tokens=input_tokens,
@@ -181,7 +205,7 @@ def transcribe_audio_chunk(
             input_price=GPT4O_TRANSCRIPT_INPUT_PER_1M,
             output_price=GPT4O_TRANSCRIPT_OUTPUT_PER_1M,
         )
-        return TranscriptionResult(text=gateway_result.text, usd_cost=usd_cost)
+        return TranscriptionResult(text=cleaned_text, usd_cost=usd_cost)
     except Exception as exc:
         return DomainError(code="INVALID_ARGUMENT", message=f"전사에 실패했습니다: {exc}")
 

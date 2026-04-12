@@ -43,6 +43,10 @@ type EditLock = {
 
 const LOCK_HEARTBEAT_MS = 3000;
 const LIVE_SYNC_MS = 5000;
+const SILENCE_FLUSH_MS = 900;
+const MIN_CHUNK_MS = 1200;
+const MAX_CHUNK_MS = 20000;
+const AUDIO_LEVEL_THRESHOLD = 0.018;
 const MAX_UNDO_HISTORY = 100;
 const MAX_BULLET_LEVEL = 4;
 const BULLET_SYMBOLS = ['•', '◦', '▪', '▫'] as const;
@@ -167,7 +171,15 @@ function MinutesPage() {
   const isSavingRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const recordedChunksRef = useRef<Blob[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const speakingRef = useRef(false);
+  const lastVoiceAtRef = useRef(0);
+  const lastChunkAtRef = useRef(0);
+  const transcriptTextRef = useRef('');
+  const transcriptQueueRef = useRef(Promise.resolve());
+  const transcribePendingCountRef = useRef(0);
 
   const agendaRef = useRef<HTMLTextAreaElement>(null);
   const meetingContentRef = useRef<HTMLTextAreaElement>(null);
@@ -297,10 +309,20 @@ function MinutesPage() {
   }, [isEditing, releaseLock]);
 
   useEffect(() => {
+    transcriptTextRef.current = transcriptText;
+  }, [transcriptText]);
+
+  useEffect(() => {
     return () => {
+      if (rafIdRef.current !== null) {
+        window.cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
       mediaRecorderRef.current?.stop();
+      void audioContextRef.current?.close().catch(() => undefined);
+      audioContextRef.current = null;
+      analyserRef.current = null;
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-      recordedChunksRef.current = [];
     };
   }, []);
 
@@ -737,31 +759,44 @@ function MinutesPage() {
   };
 
   const stopAudioResources = useCallback(() => {
+    if (rafIdRef.current !== null) {
+      window.cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    analyserRef.current = null;
+    void audioContextRef.current?.close().catch(() => undefined);
+    audioContextRef.current = null;
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
   }, []);
 
-  const transcribeRecordedAudio = useCallback(async (blob: Blob) => {
-    if (blob.size === 0) {
-      setSaveMessage('녹음된 오디오가 없습니다.');
-      return;
-    }
-    try {
-      setIsTranscribing(true);
-      setSaveMessage('녹음 파일 전사 중입니다...');
-      const base64 = await blobToBase64(blob);
-      const result = await transcribeChunk({
-        audio_base64: base64,
-        mime_type: blob.type || 'audio/webm',
+  const queueTranscriptionChunk = useCallback(async (blob: Blob) => {
+    if (blob.size === 0) return;
+    transcriptQueueRef.current = transcriptQueueRef.current
+      .then(async () => {
+        transcribePendingCountRef.current += 1;
+        setIsTranscribing(true);
+        const base64 = await blobToBase64(blob);
+        const result = await transcribeChunk({
+          audio_base64: base64,
+          mime_type: blob.type || 'audio/webm',
+          previous_text: transcriptTextRef.current.slice(-1200),
+        });
+        const nextText = result.text.trim();
+        if (!nextText) return;
+        setTranscriptText((prev) => (prev ? `${prev}\n${nextText}` : nextText));
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : '전사 중 오류가 발생했습니다.';
+        setSaveMessage(message);
+      })
+      .finally(() => {
+        transcribePendingCountRef.current = Math.max(0, transcribePendingCountRef.current - 1);
+        if (transcribePendingCountRef.current === 0) {
+          setIsTranscribing(false);
+        }
       });
-      setTranscriptText(result.text.trim());
-      setSaveMessage('전사가 완료되었습니다.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '전사 중 오류가 발생했습니다.';
-      setSaveMessage(message);
-    } finally {
-      setIsTranscribing(false);
-    }
+    await transcriptQueueRef.current;
   }, []);
 
   const startMockRecording = useCallback(() => {
@@ -772,7 +807,6 @@ function MinutesPage() {
 
   const startSingleRecording = useCallback(
     async (stream: MediaStream) => {
-      recordedChunksRef.current = [];
       const recorder = new MediaRecorder(stream, {
         mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
           ? 'audio/webm;codecs=opus'
@@ -780,27 +814,71 @@ function MinutesPage() {
       });
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
-          recordedChunksRef.current.push(event.data);
+          void queueTranscriptionChunk(event.data);
         }
       };
       recorder.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, {
-          type: recorder.mimeType || 'audio/webm',
-        });
-        recordedChunksRef.current = [];
         stopAudioResources();
         mediaRecorderRef.current = null;
         setIsRecording(false);
-        void transcribeRecordedAudio(blob);
+        setSaveMessage('녹음이 종료되었습니다. 마지막 전사 반영 중입니다.');
       };
       mediaRecorderRef.current = recorder;
       mediaStreamRef.current = stream;
 
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+
+      speakingRef.current = false;
+      const now = performance.now();
+      lastVoiceAtRef.current = now;
+      lastChunkAtRef.current = now;
+
+      const buffer = new Uint8Array(analyser.fftSize);
+      const tick = () => {
+        const activeRecorder = mediaRecorderRef.current;
+        if (!activeRecorder || activeRecorder.state !== 'recording') {
+          return;
+        }
+        analyser.getByteTimeDomainData(buffer);
+        let sum = 0;
+        for (let i = 0; i < buffer.length; i += 1) {
+          const centered = (buffer[i] - 128) / 128;
+          sum += centered * centered;
+        }
+        const rms = Math.sqrt(sum / buffer.length);
+        const ts = performance.now();
+        if (rms >= AUDIO_LEVEL_THRESHOLD) {
+          speakingRef.current = true;
+          lastVoiceAtRef.current = ts;
+        }
+
+        const silenceElapsed = ts - lastVoiceAtRef.current;
+        const chunkElapsed = ts - lastChunkAtRef.current;
+        const shouldFlushBySilence =
+          speakingRef.current && silenceElapsed >= SILENCE_FLUSH_MS && chunkElapsed >= MIN_CHUNK_MS;
+        const shouldFlushByMax = chunkElapsed >= MAX_CHUNK_MS;
+
+        if (shouldFlushBySilence || shouldFlushByMax) {
+          activeRecorder.requestData();
+          speakingRef.current = false;
+          lastChunkAtRef.current = ts;
+        }
+
+        rafIdRef.current = window.requestAnimationFrame(tick);
+      };
+
       recorder.start();
+      rafIdRef.current = window.requestAnimationFrame(tick);
       setIsRecording(true);
-      setSaveMessage('녹음을 시작했습니다. 종료 후 전사합니다.');
+      setSaveMessage('녹음을 시작했습니다. 묵음이 감지되면 전사본이 자동 반영됩니다.');
     },
-    [stopAudioResources, transcribeRecordedAudio]
+    [queueTranscriptionChunk, stopAudioResources]
   );
 
   const handleStartRecording = useCallback(() => {
@@ -826,8 +904,11 @@ function MinutesPage() {
       setIsRecording(false);
       return;
     }
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.requestData();
+    }
     mediaRecorderRef.current?.stop();
-    setIsRecording(false);
+    setSaveMessage('녹음을 종료하는 중입니다...');
   }, [isMockMode]);
 
   const handleGenerateMinutes = useCallback(() => {
@@ -1387,11 +1468,11 @@ function MinutesPage() {
           }}
         >
           <div>
-            <h3 style={{ margin: 0, fontSize: '14px' }}>녹음 후 전사</h3>
+            <h3 style={{ margin: 0, fontSize: '14px' }}>녹음/자동 전사</h3>
             <p style={{ margin: '4px 0 0', color: 'var(--text-soft)', fontSize: '12px' }}>
               {isMockMode
                 ? '모의 모드 (백엔드 호출 없음)'
-                : '녹음 종료 후 1회 전사 (gpt-4o-mini-transcribe)'}
+                : '묵음 감지 시 반영 + 종료 시 최종 반영 (gpt-4o-mini-transcribe)'}
             </p>
           </div>
           <label
@@ -1444,7 +1525,7 @@ function MinutesPage() {
               whiteSpace: 'pre-wrap',
             }}
           >
-            {transcriptText || '녹음을 종료하면 전사 텍스트가 표시됩니다.'}
+            {transcriptText || '녹음을 시작하면 일정 주기마다 전사 텍스트가 표시됩니다.'}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '12px', color: 'var(--text-soft)' }}>
