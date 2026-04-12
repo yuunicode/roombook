@@ -1,12 +1,15 @@
 import base64
-import io
 import json
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
-from openai import OpenAI
-
 from app.core.settings import OPENAI_API_KEY
+from app.infra.openai_gateway import (
+    suggest_minutes_json,
+)
+from app.infra.openai_gateway import (
+    transcribe_audio_chunk as transcribe_audio_chunk_gateway,
+)
 from app.service.domain import DomainError
 
 GPT4O_TRANSCRIPT_INPUT_PER_1M = Decimal("2.5000")
@@ -46,12 +49,6 @@ def _sanitize_items(values: object) -> list[str]:
         seen.add(key)
         sanitized.append(normalized)
     return sanitized
-
-
-def _get_client() -> OpenAI | DomainError:
-    if not OPENAI_API_KEY:
-        return DomainError(code="INVALID_ARGUMENT", message="OPENAI_API_KEY가 설정되지 않았습니다.")
-    return OpenAI(api_key=OPENAI_API_KEY)
 
 
 def _to_decimal(value: object) -> Decimal:
@@ -111,14 +108,20 @@ def _calc_usd_cost(
     return usd.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
+def _require_api_key() -> DomainError | None:
+    if OPENAI_API_KEY:
+        return None
+    return DomainError(code="INVALID_ARGUMENT", message="OPENAI_API_KEY가 설정되지 않았습니다.")
+
+
 def transcribe_audio_chunk(
     audio_base64: str,
     mime_type: str | None,
     previous_text: str | None,
 ) -> TranscriptionResult | DomainError:
-    client = _get_client()
-    if isinstance(client, DomainError):
-        return client
+    missing_key = _require_api_key()
+    if missing_key is not None:
+        return missing_key
 
     try:
         audio_bytes = base64.b64decode(audio_base64)
@@ -133,31 +136,21 @@ def transcribe_audio_chunk(
     else:
         extension = "webm"
 
-    file_like = io.BytesIO(audio_bytes)
-    file_like.name = f"chunk.{extension}"
-
     try:
         prompt = (previous_text or "").strip()[-1000:]
-        if prompt:
-            response = client.audio.transcriptions.create(
-                model="gpt-4o-transcript",
-                file=file_like,
-                prompt=prompt,
-            )
-        else:
-            response = client.audio.transcriptions.create(
-                model="gpt-4o-transcript",
-                file=file_like,
-            )
-        text = (response.text or "").strip()
-        input_tokens, output_tokens = _extract_usage_tokens(getattr(response, "usage", None))
+        gateway_result = transcribe_audio_chunk_gateway(
+            audio_bytes=audio_bytes,
+            extension=extension,
+            prompt=prompt if prompt else None,
+        )
+        input_tokens, output_tokens = _extract_usage_tokens(gateway_result.usage)
         usd_cost = _calc_usd_cost(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             input_price=GPT4O_TRANSCRIPT_INPUT_PER_1M,
             output_price=GPT4O_TRANSCRIPT_OUTPUT_PER_1M,
         )
-        return TranscriptionResult(text=text, usd_cost=usd_cost)
+        return TranscriptionResult(text=gateway_result.text, usd_cost=usd_cost)
     except Exception as exc:
         return DomainError(code="INVALID_ARGUMENT", message=f"전사에 실패했습니다: {exc}")
 
@@ -168,9 +161,9 @@ def suggest_minutes_bullets(
     existing_meeting_content: str,
     existing_meeting_result: str,
 ) -> MinutesSuggestionResult | DomainError:
-    client = _get_client()
-    if isinstance(client, DomainError):
-        return client
+    missing_key = _require_api_key()
+    if missing_key is not None:
+        return missing_key
 
     if not transcript.strip():
         return DomainError(code="INVALID_ARGUMENT", message="전사 텍스트가 비어있습니다.")
@@ -195,24 +188,15 @@ def suggest_minutes_bullets(
     )
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-5-nano",
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.1,
-        )
-        content = response.choices[0].message.content or "{}"
-        parsed = json.loads(content)
+        gateway_result = suggest_minutes_json(system_instruction=system_instruction, user_prompt=user_prompt)
+        parsed = json.loads(gateway_result.content)
     except Exception as exc:
         return DomainError(code="INVALID_ARGUMENT", message=f"회의록 생성에 실패했습니다: {exc}")
 
     agenda = _sanitize_items(parsed.get("agenda"))
     meeting_content = _sanitize_items(parsed.get("meeting_content"))
     meeting_result = _sanitize_items(parsed.get("meeting_result"))
-    input_tokens, output_tokens = _extract_usage_tokens(getattr(response, "usage", None))
+    input_tokens, output_tokens = _extract_usage_tokens(gateway_result.usage)
     usd_cost = _calc_usd_cost(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
