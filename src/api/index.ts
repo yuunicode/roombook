@@ -119,6 +119,19 @@ export type TranscribeChunkResult = {
   text: string;
 };
 
+type TranscribeFilePayload = {
+  audio_base64: string;
+  mime_type?: string;
+};
+
+export type TranscribeFileResult = {
+  text: string;
+};
+
+type TranscribeFileOptions = {
+  onUploadProgress?: (progress: number) => void;
+};
+
 type MinutesSuggestionPayload = {
   transcript: string;
   existing_agenda?: string;
@@ -337,6 +350,51 @@ export async function transcribeChunk(
   return requestJson<TranscribeChunkResult>('/ai/transcribe-chunk', {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function transcribeAudioFile(
+  payload: TranscribeFilePayload,
+  options?: TranscribeFileOptions
+): Promise<TranscribeFileResult> {
+  return new Promise<TranscribeFileResult>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('POST', `${API_BASE}/ai/transcribe-file`);
+    request.withCredentials = true;
+    request.setRequestHeader('Content-Type', 'application/json');
+
+    request.upload.onprogress = (event) => {
+      if (!event.lengthComputable || !options?.onUploadProgress) return;
+      const progress = Math.max(1, Math.min(95, Math.round((event.loaded / event.total) * 95)));
+      options.onUploadProgress(progress);
+    };
+
+    request.onload = () => {
+      const fallbackMessage = `요청 실패 (${request.status})`;
+      if (request.status < 200 || request.status >= 300) {
+        try {
+          const payload = JSON.parse(request.responseText) as ApiErrorPayload;
+          reject(new Error(payload.error?.message ?? fallbackMessage));
+          return;
+        } catch {
+          reject(new Error(fallbackMessage));
+          return;
+        }
+      }
+
+      try {
+        const payload = JSON.parse(request.responseText) as TranscribeFileResult;
+        resolve(payload);
+      } catch {
+        reject(new Error('전사 응답을 해석하지 못했습니다.'));
+      }
+    };
+
+    request.onerror = () => {
+      reject(new Error('음성 파일 업로드에 실패했습니다.'));
+    };
+
+    request.send(JSON.stringify(payload));
   });
 }
 

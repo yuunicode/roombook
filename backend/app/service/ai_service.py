@@ -11,6 +11,9 @@ from app.infra.openai_gateway import (
 from app.infra.openai_gateway import (
     transcribe_audio_chunk as transcribe_audio_chunk_gateway,
 )
+from app.infra.openai_gateway import (
+    transcribe_audio_file_diarized as transcribe_audio_file_diarized_gateway,
+)
 from app.service.domain import DomainError
 
 GPT4O_TRANSCRIPT_INPUT_PER_1M = Decimal("2.5000")
@@ -40,6 +43,21 @@ class MinutesSuggestionResult:
 class TranscriptionResult:
     text: str
     usd_cost: Decimal
+
+
+def _coerce_mapping(value: object) -> dict[str, object]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "model_dump"):
+        try:
+            dumped = value.model_dump()
+            if isinstance(dumped, dict):
+                return dumped
+        except Exception:
+            return {}
+    return {}
 
 
 def _sanitize_items(values: object) -> list[str]:
@@ -81,6 +99,35 @@ def _clean_transcript_text(value: str) -> str:
             continue
         cleaned_lines.append(line)
     return "\n".join(cleaned_lines).strip()
+
+
+def _format_diarized_transcript(raw: object, fallback_text: str) -> str:
+    payload = _coerce_mapping(raw)
+    raw_segments = payload.get("segments")
+    if not isinstance(raw_segments, list):
+        return _clean_transcript_text(fallback_text)
+
+    speaker_order: dict[str, int] = {}
+    normalized_lines: list[tuple[str, str]] = []
+    for item in raw_segments:
+        segment = _coerce_mapping(item)
+        text = str(segment.get("text") or "").strip()
+        if not text:
+            continue
+        speaker_key = str(segment.get("speaker") or "").strip().lower() or "unknown"
+        speaker_number = speaker_order.setdefault(speaker_key, len(speaker_order) + 1)
+        label = f"speaker{speaker_number}"
+        if normalized_lines and normalized_lines[-1][0] == label:
+            previous_label, previous_text = normalized_lines[-1]
+            normalized_lines[-1] = (previous_label, f"{previous_text} {text}".strip())
+            continue
+        normalized_lines.append((label, text))
+
+    if not normalized_lines:
+        return _clean_transcript_text(fallback_text)
+
+    cleaned_lines = [f"{label}: {text}" for label, text in normalized_lines]
+    return _clean_transcript_text("\n".join(cleaned_lines))
 
 
 def _to_decimal(value: object) -> Decimal:
@@ -210,6 +257,45 @@ def transcribe_audio_chunk(
         return DomainError(code="INVALID_ARGUMENT", message=f"전사에 실패했습니다: {exc}")
 
 
+def transcribe_audio_file_diarized(
+    audio_base64: str,
+    mime_type: str | None,
+) -> TranscriptionResult | DomainError:
+    missing_key = _require_api_key()
+    if missing_key is not None:
+        return missing_key
+
+    try:
+        audio_bytes = base64.b64decode(audio_base64)
+    except Exception:
+        return DomainError(code="INVALID_ARGUMENT", message="오디오 데이터 형식이 올바르지 않습니다.")
+    if len(audio_bytes) == 0:
+        return DomainError(code="INVALID_ARGUMENT", message="빈 오디오 데이터입니다.")
+
+    normalized_audio = _normalize_audio_format(mime_type)
+    if isinstance(normalized_audio, DomainError):
+        return normalized_audio
+    extension, normalized_mime_type = normalized_audio
+
+    try:
+        gateway_result = transcribe_audio_file_diarized_gateway(
+            audio_bytes=audio_bytes,
+            extension=extension,
+            mime_type=normalized_mime_type,
+        )
+        cleaned_text = _format_diarized_transcript(gateway_result.raw, gateway_result.text)
+        input_tokens, output_tokens = _extract_usage_tokens(gateway_result.usage)
+        usd_cost = _calc_usd_cost(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            input_price=GPT4O_TRANSCRIPT_INPUT_PER_1M,
+            output_price=GPT4O_TRANSCRIPT_OUTPUT_PER_1M,
+        )
+        return TranscriptionResult(text=cleaned_text, usd_cost=usd_cost)
+    except Exception as exc:
+        return DomainError(code="INVALID_ARGUMENT", message=f"음성 파일 전사에 실패했습니다: {exc}")
+
+
 def suggest_minutes_bullets(
     transcript: str,
     existing_agenda: str,
@@ -228,7 +314,13 @@ def suggest_minutes_bullets(
         "JSON 객체만 반환하고, 키는 agenda, meeting_content, meeting_result 3개만 사용한다. "
         "각 값은 문자열 배열이다. 각 항목은 1문장 불릿 포인트용 문장이다. "
         "문장 앞에 '안건:', '주제:', '내용:', '결과:' 같은 접두어를 붙이지 않는다. "
-        "문체는 간결하고 정돈된 회의록 문장으로 유지한다. "
+        "문체는 간결하고 정돈된 한국어 회의록 문장으로 유지한다. "
+        "회의에서 결정된 사항, 담당자, 후속 액션, 보류 사항이 있으면 우선적으로 정리한다. "
+        "어떤 일을 특정 기한 내에 해야 한다는 내용이 있으면 그 기한을 포함한 문장으로 정리한다. "
+        "사람 이름이나 직급이 전사 원문에 명확히 있으면 "
+        "주임, 선임, 책임, 수석 등의 한국식 직급 표기를 그대로 유지한다. "
+        "이름이나 직급이 불명확하면 추정해서 만들지 말고 중립적으로 표현한다. "
+        "구어체, 반복 표현, 불필요한 추임새는 제거하고 핵심만 정리한다. "
         "섹션당 최대 5개 항목만 반환한다. "
         "이미 사용자 작성본과 의미가 겹치는 내용은 제외한다. "
         "새로운 정보만 반환한다."
@@ -250,6 +342,12 @@ def suggest_minutes_bullets(
         parsed = json.loads(gateway_result.content)
     except Exception as exc:
         return DomainError(code="INVALID_ARGUMENT", message=f"회의록 생성에 실패했습니다: {exc}")
+
+    if not isinstance(parsed, dict):
+        return DomainError(
+            code="INVALID_ARGUMENT",
+            message="회의록 생성에 실패했습니다: 모델 응답 형식이 올바른 JSON 객체가 아닙니다.",
+        )
 
     agenda = _sanitize_items(parsed.get("agenda"))
     meeting_content = _sanitize_items(parsed.get("meeting_content"))

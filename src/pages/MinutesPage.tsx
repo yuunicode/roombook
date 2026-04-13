@@ -16,6 +16,7 @@ import {
   getMinutesLock as getMinutesLockApi,
   releaseMinutesLock as releaseMinutesLockApi,
   suggestMinutesFromTranscript,
+  transcribeAudioFile,
   transcribeChunk,
   updateMinutesLiveState as updateMinutesLiveStateApi,
   type MinutesLockDto,
@@ -43,26 +44,18 @@ type EditLock = {
   updatedAt: number;
 };
 
+type AutoRecordMode = 'record' | 'upload';
+
 const LOCK_HEARTBEAT_MS = 3000;
 const LIVE_SYNC_MS = 5000;
-const LIVE_TRANSCRIPT_SYNC_MS = 15000;
-const TRANSCRIBE_CHUNK_MS = 15000;
 const SILENCE_PARAGRAPH_MS = 1200;
 const AUDIO_LEVEL_THRESHOLD = 0.018;
-const MIN_TRANSCRIBE_CHUNK_BYTES = 12_000;
-const MIN_FINAL_CHUNK_BYTES = 4_000;
 const MAX_UNDO_HISTORY = 100;
 const MAX_BULLET_LEVEL = 4;
 const BULLET_SYMBOLS = ['•', '◦', '▪', '▫'] as const;
 const BULLET_PATTERN = /^(\t{0,3})([•◦▪▫])\s?(.*)$/;
-const MOCK_TRANSCRIPT_LINES = [
-  '프로젝트 일정 점검을 위해 이번 주 목표를 다시 확인했습니다.',
-  'API 응답 지연 문제는 캐시 정책 조정으로 우선 대응하기로 했습니다.',
-  'UI 개편은 관리자 패널부터 단계적으로 적용하기로 합의했습니다.',
-  '다음 스프린트 전까지 QA 체크리스트를 표준화하기로 했습니다.',
-  '배포 전날 회귀 테스트 결과를 공유하고 승인 절차를 진행합니다.',
-] as const;
-
+const RECORDING_SEGMENT_SECONDS = 15;
+const MIN_FINAL_SEGMENT_SECONDS = 0.75;
 function getBulletPrefix(level: number) {
   const normalized = Math.max(0, Math.min(level, BULLET_SYMBOLS.length - 1));
   return `${BULLET_SYMBOLS[normalized]} `;
@@ -134,6 +127,42 @@ function buildMinutesMarkdown(draft: MinutesDraft, internalAttendeeText: string)
   ].join('\n');
 }
 
+function encodeWavBlob(chunks: Float32Array[], sampleRate: number): Blob {
+  const totalSamples = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const pcmBuffer = new ArrayBuffer(44 + totalSamples * 2);
+  const view = new DataView(pcmBuffer);
+  const writeString = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i += 1) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + totalSamples * 2, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, totalSamples * 2, true);
+
+  let offset = 44;
+  for (const chunk of chunks) {
+    for (let i = 0; i < chunk.length; i += 1) {
+      const sample = Math.max(-1, Math.min(1, chunk[i]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
+  }
+
+  return new Blob([pcmBuffer], { type: 'audio/wav' });
+}
+
 function MinutesPage() {
   const navigate = useNavigate();
   const { reservationId } = useParams<{ reservationId: string }>();
@@ -170,9 +199,12 @@ function MinutesPage() {
   const [attendeeQuery, setAttendeeQuery] = useState('');
   const [selectedAttendees, setSelectedAttendees] = useState<AppUser[]>([]);
   const [isRecording, setIsRecording] = useState(false);
-  const [isMockMode, setIsMockMode] = useState(import.meta.env.VITE_MOCK_AI === 'true');
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [isStoppingRecording, setIsStoppingRecording] = useState(false);
+  const [autoRecordMode, setAutoRecordMode] = useState<AutoRecordMode>('record');
+  const [isUploadingAudioFile, setIsUploadingAudioFile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [transcriptText, setTranscriptText] = useState('');
   const [isAutoRecordPanelOpen, setIsAutoRecordPanelOpen] = useState(false);
   const [sharedIsRecording, setSharedIsRecording] = useState(false);
@@ -183,27 +215,34 @@ function MinutesPage() {
     meeting_content: [],
     meeting_result: [],
   });
+  const activeLockRef = useRef<EditLock | null>(null);
   const historyRef = useRef<MinutesDraft[]>([]);
   const lastSavedKeyRef = useRef('');
   const isSavingRef = useRef(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recorderIntervalRef = useRef<number | null>(null);
+  const recordingActiveRef = useRef(false);
+  const uploadProgressIntervalRef = useRef<number | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const processorNodeRef = useRef<ScriptProcessorNode | null>(null);
+  const processorSinkRef = useRef<GainNode | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const speakingRef = useRef(false);
   const lastVoiceAtRef = useRef(0);
   const insertParagraphBreakRef = useRef(false);
+  const segmentSampleRateRef = useRef(0);
+  const segmentChunksRef = useRef<Float32Array[]>([]);
+  const segmentSampleCountRef = useRef(0);
+  const recordingSessionBaseTextRef = useRef('');
+  const recordingSessionTextRef = useRef('');
   const transcriptTextRef = useRef('');
   const transcriptQueueRef = useRef(Promise.resolve());
   const transcribePendingCountRef = useRef(0);
-  const pendingAudioChunksRef = useRef<Blob[]>([]);
-  const pendingAudioBytesRef = useRef(0);
 
   const agendaRef = useRef<HTMLTextAreaElement>(null);
   const meetingContentRef = useRef<HTMLTextAreaElement>(null);
   const meetingResultRef = useRef<HTMLTextAreaElement>(null);
+  const uploadAudioInputRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
   const currentUser = useMemo(
@@ -255,9 +294,13 @@ function MinutesPage() {
     }
   }, [readLock, reservationId, toEditLock]);
 
-  const syncLiveTranscript = useCallback(async () => {
-    if (!reservationId || isMockMode) return;
+  const loadLatestMinutesSnapshot = useCallback(async () => {
+    if (!reservationId) return;
     try {
+      const reservationDetail = await getReservationMinutes(reservationId);
+      if (reservationDetail) {
+        setMinutesReservation(reservationDetail);
+      }
       const state = await getMinutesLiveStateApi(reservationId);
       setTranscriptText(state.transcript_text ?? '');
       setSharedIsRecording(state.is_recording);
@@ -266,7 +309,7 @@ function MinutesPage() {
     } catch {
       // 라이브 전사 동기화 실패는 UI 동작을 막지 않는다.
     }
-  }, [isMockMode, reservationId]);
+  }, [getReservationMinutes, reservationId]);
 
   useEffect(() => {
     if (!activeReservation || isEditing) {
@@ -346,20 +389,28 @@ function MinutesPage() {
   }, [transcriptText]);
 
   useEffect(() => {
+    activeLockRef.current = activeLock;
+  }, [activeLock]);
+
+  useEffect(() => {
     return () => {
-      if (recorderIntervalRef.current !== null) {
-        window.clearInterval(recorderIntervalRef.current);
-        recorderIntervalRef.current = null;
-      }
       if (rafIdRef.current !== null) {
         window.cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
       }
-      mediaRecorderRef.current?.stop();
+      recordingActiveRef.current = false;
+      processorNodeRef.current?.disconnect();
+      processorNodeRef.current = null;
+      processorSinkRef.current?.disconnect();
+      processorSinkRef.current = null;
       void audioContextRef.current?.close().catch(() => undefined);
       audioContextRef.current = null;
       analyserRef.current = null;
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      if (uploadProgressIntervalRef.current !== null) {
+        window.clearInterval(uploadProgressIntervalRef.current);
+        uploadProgressIntervalRef.current = null;
+      }
     };
   }, []);
 
@@ -602,24 +653,22 @@ function MinutesPage() {
     if (isEditing) return;
     const syncLock = () => {
       void (async () => {
+        const previousLock = activeLockRef.current;
         const lock = await readLock();
         setActiveLock(lock);
+        if (previousLock && previousLock.holderUserId !== viewerId && lock === null) {
+          await loadLatestMinutesSnapshot();
+        }
       })();
     };
     syncLock();
     const intervalId = window.setInterval(syncLock, LOCK_HEARTBEAT_MS);
     return () => window.clearInterval(intervalId);
-  }, [isEditing, readLock, reservationId]);
+  }, [isEditing, loadLatestMinutesSnapshot, readLock, reservationId, viewerId]);
 
   useEffect(() => {
-    if (!reservationId || isMockMode) return;
-    const sync = () => {
-      void syncLiveTranscript();
-    };
-    sync();
-    const intervalId = window.setInterval(sync, LIVE_TRANSCRIPT_SYNC_MS);
-    return () => window.clearInterval(intervalId);
-  }, [isMockMode, reservationId, syncLiveTranscript]);
+    void loadLatestMinutesSnapshot();
+  }, [loadLatestMinutesSnapshot]);
 
   useEffect(() => {
     if (!isEditing) return;
@@ -681,20 +730,41 @@ function MinutesPage() {
   };
 
   const stopAudioResources = useCallback(() => {
-    if (recorderIntervalRef.current !== null) {
-      window.clearInterval(recorderIntervalRef.current);
-      recorderIntervalRef.current = null;
-    }
+    recordingActiveRef.current = false;
     if (rafIdRef.current !== null) {
       window.cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
     }
+    processorNodeRef.current?.disconnect();
+    processorNodeRef.current = null;
+    processorSinkRef.current?.disconnect();
+    processorSinkRef.current = null;
     analyserRef.current = null;
     void audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
   }, []);
+
+  const stopUploadProgressTimer = useCallback(() => {
+    if (uploadProgressIntervalRef.current !== null) {
+      window.clearInterval(uploadProgressIntervalRef.current);
+      uploadProgressIntervalRef.current = null;
+    }
+  }, []);
+
+  const startUploadProcessingProgress = useCallback(() => {
+    stopUploadProgressTimer();
+    uploadProgressIntervalRef.current = window.setInterval(() => {
+      setUploadProgress((current) => {
+        if (current >= 99) {
+          stopUploadProgressTimer();
+          return current;
+        }
+        return current + 1;
+      });
+    }, 400);
+  }, [stopUploadProgressTimer]);
 
   const queueTranscriptionChunk = useCallback(
     async (blob: Blob) => {
@@ -707,13 +777,15 @@ function MinutesPage() {
           const result = await transcribeChunk({
             audio_base64: base64,
             mime_type: blob.type || 'audio/webm',
-            previous_text: transcriptTextRef.current.slice(-1200),
           });
           const nextText = result.text.trim();
           if (!nextText) return;
-          const baseText = transcriptTextRef.current.trim();
+          const baseText = recordingSessionBaseTextRef.current.trim();
+          const sessionText = recordingSessionTextRef.current.trim();
           const separator = insertParagraphBreakRef.current ? '\n\n' : '\n';
-          const mergedText = baseText ? `${baseText}${separator}${nextText}` : nextText;
+          const nextSessionText = sessionText ? `${sessionText}${separator}${nextText}` : nextText;
+          recordingSessionTextRef.current = nextSessionText;
+          const mergedText = baseText ? `${baseText}\n\n${nextSessionText}` : nextSessionText;
           insertParagraphBreakRef.current = false;
           const liveState = await updateMinutesLiveStateApi(reservationId, {
             transcript_text: mergedText,
@@ -726,7 +798,6 @@ function MinutesPage() {
         .catch((error: unknown) => {
           const message = error instanceof Error ? error.message : '전사 중 오류가 발생했습니다.';
           if (message.includes('Audio file might be corrupted or unsupported')) {
-            setSaveMessage('짧은 음성 조각은 건너뛰고 다음 전사를 계속합니다.');
             return;
           }
           setSaveMessage(message);
@@ -742,81 +813,55 @@ function MinutesPage() {
     [reservationId]
   );
 
-  const flushPendingChunks = useCallback(
+  const flushPcmSegment = useCallback(
     (force: boolean) => {
-      const totalBytes = pendingAudioBytesRef.current;
-      const minBytes = force ? MIN_FINAL_CHUNK_BYTES : MIN_TRANSCRIBE_CHUNK_BYTES;
-      if (totalBytes < minBytes) {
+      const sampleRate = segmentSampleRateRef.current;
+      const totalSamples = segmentSampleCountRef.current;
+      if (!sampleRate || totalSamples === 0) return;
+
+      const minSamples = Math.floor(sampleRate * MIN_FINAL_SEGMENT_SECONDS);
+      if (!force && totalSamples < sampleRate * RECORDING_SEGMENT_SECONDS) {
         return;
       }
-      const merged = new Blob(pendingAudioChunksRef.current, {
-        type: mediaRecorderRef.current?.mimeType || 'audio/webm',
-      });
-      pendingAudioChunksRef.current = [];
-      pendingAudioBytesRef.current = 0;
-      void queueTranscriptionChunk(merged);
+      if (force && totalSamples < minSamples) {
+        segmentChunksRef.current = [];
+        segmentSampleCountRef.current = 0;
+        return;
+      }
+
+      const wavBlob = encodeWavBlob(segmentChunksRef.current, sampleRate);
+      segmentChunksRef.current = [];
+      segmentSampleCountRef.current = 0;
+      void queueTranscriptionChunk(wavBlob);
     },
     [queueTranscriptionChunk]
   );
 
-  const startMockRecording = useCallback(() => {
-    if (!isEditing) {
-      setSaveMessage('수정 모드에서만 녹음을 시작할 수 있습니다.');
-      return;
-    }
-    setIsRecording(true);
-    setIsTranscribing(false);
-    setSaveMessage('모의 녹음을 시작했습니다. 종료 후 전사본이 생성됩니다.');
-  }, [isEditing]);
-
   const startSingleRecording = useCallback(
     async (stream: MediaStream) => {
-      pendingAudioChunksRef.current = [];
-      pendingAudioBytesRef.current = 0;
-      const recorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
-          : 'audio/webm',
-      });
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          pendingAudioChunksRef.current.push(event.data);
-          pendingAudioBytesRef.current += event.data.size;
-          flushPendingChunks(false);
-        }
-      };
-      recorder.onstop = () => {
-        flushPendingChunks(true);
-        if (reservationId) {
-          void (async () => {
-            try {
-              const liveState = await updateMinutesLiveStateApi(reservationId, {
-                is_recording: false,
-              });
-              setSharedIsRecording(liveState.is_recording);
-              setSharedRecorderName(liveState.updated_by_name ?? '');
-              setSharedRecorderUserId(liveState.updated_by_user_id ?? '');
-              setTranscriptText(liveState.transcript_text ?? '');
-            } catch {
-              // 이탈 상황에서도 로컬 종료는 계속 진행한다.
-            }
-          })();
-        }
-        stopAudioResources();
-        mediaRecorderRef.current = null;
-        setIsRecording(false);
-        setSaveMessage('녹음이 종료되었습니다. 마지막 전사 반영 중입니다.');
-      };
-      mediaRecorderRef.current = recorder;
+      recordingSessionBaseTextRef.current = transcriptTextRef.current.trim();
+      recordingSessionTextRef.current = '';
       mediaStreamRef.current = stream;
+      recordingActiveRef.current = true;
+      segmentChunksRef.current = [];
+      segmentSampleCountRef.current = 0;
 
       const audioContext = new AudioContext();
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      const silentSink = audioContext.createGain();
+      silentSink.gain.value = 0;
       analyser.fftSize = 2048;
       source.connect(analyser);
+      source.connect(processor);
+      processor.connect(silentSink);
+      silentSink.connect(audioContext.destination);
       audioContextRef.current = audioContext;
       analyserRef.current = analyser;
+      processorNodeRef.current = processor;
+      processorSinkRef.current = silentSink;
+      segmentSampleRateRef.current = audioContext.sampleRate;
 
       speakingRef.current = false;
       const now = performance.now();
@@ -825,8 +870,7 @@ function MinutesPage() {
 
       const buffer = new Uint8Array(analyser.fftSize);
       const tick = () => {
-        const activeRecorder = mediaRecorderRef.current;
-        if (!activeRecorder || activeRecorder.state !== 'recording') {
+        if (!recordingActiveRef.current) {
           return;
         }
         analyser.getByteTimeDomainData(buffer);
@@ -851,15 +895,23 @@ function MinutesPage() {
         rafIdRef.current = window.requestAnimationFrame(tick);
       };
 
-      recorder.start();
-      recorderIntervalRef.current = window.setInterval(() => {
-        const activeRecorder = mediaRecorderRef.current;
-        if (!activeRecorder || activeRecorder.state !== 'recording') return;
-        activeRecorder.requestData();
-      }, TRANSCRIBE_CHUNK_MS);
+      processor.onaudioprocess = (event) => {
+        if (!recordingActiveRef.current) return;
+        const input = event.inputBuffer.getChannelData(0);
+        if (!input || input.length === 0) return;
+        const copy = new Float32Array(input.length);
+        copy.set(input);
+        segmentChunksRef.current.push(copy);
+        segmentSampleCountRef.current += copy.length;
+        if (segmentSampleCountRef.current >= audioContext.sampleRate * RECORDING_SEGMENT_SECONDS) {
+          flushPcmSegment(false);
+        }
+      };
+
       rafIdRef.current = window.requestAnimationFrame(tick);
       setIsRecording(true);
-      setSaveMessage('녹음을 시작했습니다. 15초마다 전사본이 자동 반영됩니다.');
+      setIsStoppingRecording(false);
+      setSaveMessage('녹음을 시작했습니다. 약 15초 단위로 음성 청크를 전사해 반영합니다.');
       if (reservationId) {
         try {
           const liveState = await updateMinutesLiveStateApi(reservationId, {
@@ -876,7 +928,7 @@ function MinutesPage() {
         }
       }
     },
-    [flushPendingChunks, reservationId, stopAudioResources]
+    [flushPcmSegment, reservationId]
   );
 
   const handleStartRecording = useCallback(() => {
@@ -885,12 +937,8 @@ function MinutesPage() {
       return;
     }
     const recordingByOther = sharedIsRecording && sharedRecorderUserId !== viewerId;
-    if (!isMockMode && recordingByOther) {
+    if (recordingByOther) {
       setSaveMessage(`${sharedRecorderName || '다른 사용자'}가 녹음 중입니다.`);
-      return;
-    }
-    if (isMockMode) {
-      startMockRecording();
       return;
     }
     void (async () => {
@@ -904,29 +952,24 @@ function MinutesPage() {
     })();
   }, [
     isEditing,
-    isMockMode,
     sharedIsRecording,
     sharedRecorderName,
     sharedRecorderUserId,
-    startMockRecording,
     startSingleRecording,
     viewerId,
   ]);
 
   const handleStopRecording = useCallback(() => {
-    if (isMockMode) {
-      setTranscriptText(MOCK_TRANSCRIPT_LINES.join('\n'));
-      setSaveMessage('모의 전사가 완료되었습니다.');
-      setIsRecording(false);
-      return;
-    }
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.requestData();
-    }
-    mediaRecorderRef.current?.stop();
-    if (reservationId) {
-      void (async () => {
-        try {
+    if (isStoppingRecording) return;
+    setIsStoppingRecording(true);
+    recordingActiveRef.current = false;
+    flushPcmSegment(true);
+    stopAudioResources();
+    setIsRecording(false);
+    void (async () => {
+      try {
+        await transcriptQueueRef.current;
+        if (reservationId) {
           const liveState = await updateMinutesLiveStateApi(reservationId, {
             is_recording: false,
           });
@@ -934,13 +977,93 @@ function MinutesPage() {
           setSharedRecorderName(liveState.updated_by_name ?? '');
           setSharedRecorderUserId(liveState.updated_by_user_id ?? '');
           setTranscriptText(liveState.transcript_text ?? '');
-        } catch {
-          // stop 동작은 유지한다.
+        }
+        setSaveMessage('녹음이 종료되었습니다.');
+      } catch {
+        setSaveMessage('녹음은 종료되었지만 마지막 전사 반영에 실패했습니다.');
+      } finally {
+        recordingSessionBaseTextRef.current = '';
+        recordingSessionTextRef.current = '';
+        setIsStoppingRecording(false);
+      }
+    })();
+    setSaveMessage('녹음을 종료하는 중입니다...');
+  }, [flushPcmSegment, isStoppingRecording, reservationId, stopAudioResources]);
+
+  const handleUploadedAudioFile = useCallback(
+    (file: File | null) => {
+      if (!file) return;
+      if (!isEditing || !reservationId) {
+        setSaveMessage('수정 모드에서만 음성 파일을 전사할 수 있습니다.');
+        return;
+      }
+      if (isRecording || isStoppingRecording) {
+        setSaveMessage('녹음 중에는 음성 파일을 업로드할 수 없습니다.');
+        return;
+      }
+      void (async () => {
+        try {
+          setIsUploadingAudioFile(true);
+          setIsTranscribing(true);
+          setUploadProgress(1);
+          setSaveMessage(`"${file.name}" 업로드 중입니다...`);
+          const audioBase64 = await blobToBase64(file);
+          setSaveMessage(`"${file.name}" 전사 요청을 보내는 중입니다...`);
+          startUploadProcessingProgress();
+          const result = await transcribeAudioFile(
+            {
+              audio_base64: audioBase64,
+              mime_type: file.type || 'audio/webm',
+            },
+            {
+              onUploadProgress: (progress) => {
+                setUploadProgress((current) => Math.max(current, progress));
+              },
+            }
+          );
+          setSaveMessage(`"${file.name}" 전사 처리 중입니다...`);
+          const nextText = result.text.trim();
+          if (!nextText) {
+            stopUploadProgressTimer();
+            setUploadProgress(100);
+            setSaveMessage('음성 파일에서 전사 결과를 찾지 못했습니다.');
+            return;
+          }
+          const baseText = transcriptTextRef.current.trim();
+          const mergedText = baseText ? `${baseText}\n\n${nextText}` : nextText;
+          const liveState = await updateMinutesLiveStateApi(reservationId, {
+            transcript_text: mergedText,
+          });
+          stopUploadProgressTimer();
+          setUploadProgress(100);
+          setTranscriptText(liveState.transcript_text ?? '');
+          setSharedIsRecording(liveState.is_recording);
+          setSharedRecorderName(liveState.updated_by_name ?? '');
+          setSharedRecorderUserId(liveState.updated_by_user_id ?? '');
+          setSaveMessage(`"${file.name}" 전사가 반영되었습니다.`);
+        } catch (error) {
+          stopUploadProgressTimer();
+          setUploadProgress(0);
+          const message = error instanceof Error ? error.message : '음성 파일 전사에 실패했습니다.';
+          setSaveMessage(message);
+        } finally {
+          setIsUploadingAudioFile(false);
+          setIsTranscribing(false);
+          if (uploadAudioInputRef.current) {
+            uploadAudioInputRef.current.value = '';
+          }
         }
       })();
-    }
-    setSaveMessage('녹음을 종료하는 중입니다...');
-  }, [isMockMode, reservationId]);
+    },
+    [
+      isEditing,
+      isRecording,
+      isStoppingRecording,
+      reservationId,
+      startUploadProcessingProgress,
+      stopUploadProgressTimer,
+    ]
+  );
 
   const handleGenerateMinutes = useCallback(() => {
     void (async () => {
@@ -950,22 +1073,6 @@ function MinutesPage() {
       }
       try {
         setIsGeneratingSummary(true);
-        if (isMockMode) {
-          const lines = transcriptText
-            .split('\n')
-            .map((line) => line.trim())
-            .filter((line) => line.length > 0);
-          const agenda = lines.slice(0, 3);
-          const meetingContent = lines.slice(1, 5);
-          const meetingResult = lines.slice(-3);
-          setSummarySuggestion({
-            agenda,
-            meeting_content: meetingContent,
-            meeting_result: meetingResult,
-          });
-          setSaveMessage('모의 AI 제안이 생성되었습니다.');
-          return;
-        }
         const result = await suggestMinutesFromTranscript({
           transcript: transcriptText,
           existing_agenda: draft.agenda,
@@ -981,7 +1088,7 @@ function MinutesPage() {
         setIsGeneratingSummary(false);
       }
     })();
-  }, [draft.agenda, draft.meetingContent, draft.meetingResult, isMockMode, transcriptText]);
+  }, [draft.agenda, draft.meetingContent, draft.meetingResult, transcriptText]);
 
   const applySuggestionForSection = useCallback(
     (section: MinutesSectionKey) => {
@@ -1053,13 +1160,17 @@ function MinutesPage() {
         style={{
           display: 'grid',
           gridTemplateColumns: showAutoRecordPanel
-            ? 'minmax(0, 1fr) minmax(300px, 340px)'
+            ? 'minmax(0, 1fr) minmax(0, 1fr)'
             : 'minmax(0, 1fr)',
           gap: '16px',
           alignItems: 'start',
+          justifyItems: showAutoRecordPanel ? 'stretch' : 'center',
         }}
       >
-        <div id="minutes-page-export-root" style={{ maxWidth: '960px' }}>
+        <div
+          id="minutes-page-export-root"
+          style={{ width: '100%', maxWidth: showAutoRecordPanel ? 'none' : '960px' }}
+        >
           <section
             style={{
               display: 'flex',
@@ -1454,6 +1565,7 @@ function MinutesPage() {
             style={{
               position: 'sticky',
               top: '16px',
+              alignSelf: 'start',
               background: '#ffffff',
               border: '1px solid var(--border)',
               borderRadius: '12px',
@@ -1463,75 +1575,18 @@ function MinutesPage() {
               gap: '12px',
             }}
           >
-            <div>
-              <h3 style={{ margin: 0, fontSize: '14px' }}>[회의 자동기록]</h3>
-              <p style={{ margin: '4px 0 0', color: 'var(--text-soft)', fontSize: '12px' }}>
-                {isMockMode
-                  ? '모의 모드 (백엔드 호출 없음)'
-                  : '공유 전사 패널 · 묵음 감지 시 반영 + 종료 시 최종 반영 (gpt-4o-mini-transcribe)'}
-              </p>
-            </div>
-            <label
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '12px',
-                color: 'var(--text-soft)',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={isMockMode}
-                disabled={isRecording || isTranscribing}
-                onChange={(event) => setIsMockMode(event.target.checked)}
-              />
-              모의 모드 사용
-            </label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {!isRecording ? (
-                <button
-                  className="nav-menu-item"
-                  type="button"
-                  onClick={handleStartRecording}
-                  disabled={
-                    !isMockMode &&
-                    (!isEditing || (sharedIsRecording && sharedRecorderUserId !== viewerId))
-                  }
-                  style={{
-                    height: '34px',
-                    padding: '0 12px',
-                    borderColor: '#d92d20',
-                    background: isRecording ? '#b42318' : '#d92d20',
-                    color: '#ffffff',
-                  }}
-                >
-                  녹음 버튼
-                </button>
-              ) : (
-                <button
-                  className="nav-menu-item"
-                  type="button"
-                  onClick={handleStopRecording}
-                  style={{
-                    height: '34px',
-                    padding: '0 12px',
-                    borderColor: '#b42318',
-                    background: '#b42318',
-                    color: '#ffffff',
-                  }}
-                >
-                  녹음 중지
-                </button>
-              )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '14px' }}>회의 자동기록</h3>
+                <p style={{ margin: '4px 0 0', color: 'var(--text-soft)', fontSize: '12px' }}>
+                  녹음하거나 음성 파일을 올리면 전사 내용을 여기에서 확인하고 바로 회의록으로 정리할
+                  수 있습니다.
+                </p>
+              </div>
               <button
                 className="nav-menu-item"
                 type="button"
                 onClick={() => {
-                  if (isMockMode) {
-                    setTranscriptText('');
-                    return;
-                  }
                   if (!isEditing || !reservationId) {
                     setSaveMessage('수정 모드에서만 전사를 초기화할 수 있습니다.');
                     return;
@@ -1541,6 +1596,8 @@ function MinutesPage() {
                       const liveState = await updateMinutesLiveStateApi(reservationId, {
                         transcript_text: '',
                       });
+                      recordingSessionBaseTextRef.current = '';
+                      recordingSessionTextRef.current = '';
                       setTranscriptText(liveState.transcript_text ?? '');
                       setSharedIsRecording(liveState.is_recording);
                       setSharedRecorderName(liveState.updated_by_name ?? '');
@@ -1552,12 +1609,150 @@ function MinutesPage() {
                     }
                   })();
                 }}
-                disabled={isRecording || isTranscribing || (!isMockMode && !isEditing)}
-                style={{ height: '34px', padding: '0 12px' }}
+                disabled={isRecording || isTranscribing || !isEditing}
+                style={{
+                  height: '28px',
+                  padding: '0 10px',
+                  fontSize: '12px',
+                  alignSelf: 'flex-start',
+                }}
               >
                 초기화
               </button>
             </div>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: '8px',
+              }}
+            >
+              <button
+                className="nav-menu-item"
+                type="button"
+                onClick={() => setAutoRecordMode('record')}
+                style={{
+                  height: '34px',
+                  justifyContent: 'center',
+                  background: autoRecordMode === 'record' ? 'rgba(36, 99, 235, 0.12)' : '#ffffff',
+                  borderColor:
+                    autoRecordMode === 'record' ? 'rgba(36, 99, 235, 0.35)' : 'var(--border)',
+                  color: autoRecordMode === 'record' ? '#1d4ed8' : 'var(--text)',
+                }}
+              >
+                녹음
+              </button>
+              <button
+                className="nav-menu-item"
+                type="button"
+                onClick={() => setAutoRecordMode('upload')}
+                style={{
+                  height: '34px',
+                  justifyContent: 'center',
+                  background: autoRecordMode === 'upload' ? 'rgba(36, 99, 235, 0.12)' : '#ffffff',
+                  borderColor:
+                    autoRecordMode === 'upload' ? 'rgba(36, 99, 235, 0.35)' : 'var(--border)',
+                  color: autoRecordMode === 'upload' ? '#1d4ed8' : 'var(--text)',
+                }}
+              >
+                음성파일 업로드
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                ref={uploadAudioInputRef}
+                type="file"
+                accept="audio/*,.mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm"
+                style={{ display: 'none' }}
+                onChange={(event) => {
+                  handleUploadedAudioFile(event.target.files?.[0] ?? null);
+                }}
+              />
+              {autoRecordMode === 'record' ? (
+                <button
+                  className="nav-menu-item"
+                  type="button"
+                  onClick={isRecording ? handleStopRecording : handleStartRecording}
+                  disabled={
+                    isStoppingRecording ||
+                    !isEditing ||
+                    (sharedIsRecording && sharedRecorderUserId !== viewerId)
+                  }
+                  style={{
+                    height: '34px',
+                    padding: '0 12px',
+                    borderColor: '#d92d20',
+                    justifyContent: 'center',
+                    background: isRecording ? '#b42318' : '#d92d20',
+                    color: '#ffffff',
+                    flex: 1,
+                  }}
+                >
+                  {isRecording ? '녹음중...' : '녹음 시작'}
+                </button>
+              ) : (
+                <button
+                  className="nav-menu-item"
+                  type="button"
+                  onClick={() => uploadAudioInputRef.current?.click()}
+                  disabled={
+                    isRecording ||
+                    isStoppingRecording ||
+                    isTranscribing ||
+                    !isEditing ||
+                    (sharedIsRecording && sharedRecorderUserId !== viewerId)
+                  }
+                  style={{
+                    height: '34px',
+                    padding: '0 12px',
+                    justifyContent: 'center',
+                    flex: 1,
+                  }}
+                >
+                  음성파일 선택
+                </button>
+              )}
+            </div>
+            {autoRecordMode === 'upload' && (
+              <p style={{ margin: '-4px 0 0', color: 'var(--text-soft)', fontSize: '12px' }}>
+                지원 형식: mp3, mp4, mpeg, mpga, m4a, wav, webm
+              </p>
+            )}
+            {autoRecordMode === 'upload' && isUploadingAudioFile && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  background: '#fafafb',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                  <span style={{ color: 'var(--text-soft)' }}>업로드/전사 진행중</span>
+                  <strong>{uploadProgress}/100</strong>
+                </div>
+                <div
+                  style={{
+                    width: '100%',
+                    height: '8px',
+                    borderRadius: '999px',
+                    background: '#e5e7eb',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${uploadProgress}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #2563eb 0%, #60a5fa 100%)',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
             <div
               style={{
                 minHeight: '140px',
@@ -1572,21 +1767,21 @@ function MinutesPage() {
                 whiteSpace: 'pre-wrap',
               }}
             >
-              {transcriptText || '녹음을 시작하면 일정 주기마다 전사 텍스트가 표시됩니다.'}
+              {transcriptText}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '12px', color: 'var(--text-soft)' }}>
-                {isTranscribing
-                  ? '전사 처리 중...'
-                  : isRecording
-                    ? isMockMode
-                      ? '모의 녹음 중'
-                      : '녹음 중'
-                    : !isMockMode && sharedIsRecording
-                      ? sharedRecorderUserId === viewerId
-                        ? '내가 다른 탭에서 녹음 중'
-                        : `${sharedRecorderName || '다른 사용자'}가 녹음 중`
-                      : '대기 중'}
+                {isUploadingAudioFile
+                  ? `음성 파일 처리 중... ${uploadProgress}/100`
+                  : isTranscribing
+                    ? '전사 처리 중...'
+                    : isRecording
+                      ? '녹음 중'
+                      : sharedIsRecording
+                        ? sharedRecorderUserId === viewerId
+                          ? '내가 다른 탭에서 녹음 중'
+                          : `${sharedRecorderName || '다른 사용자'}가 녹음 중`
+                        : '대기 중'}
               </span>
               <button
                 className="linear-primary-button"

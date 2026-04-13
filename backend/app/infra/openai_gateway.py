@@ -9,6 +9,7 @@ from app.core.settings import OPENAI_API_KEY
 class GatewayTranscriptionResponse:
     text: str
     usage: object | None
+    raw: object | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +40,29 @@ def transcribe_audio_chunk(
             model="gpt-4o-mini-transcribe",
             file=(file_name, audio_bytes, mime_type),
         )
-    return GatewayTranscriptionResponse(text=(response.text or "").strip(), usage=getattr(response, "usage", None))
+    return GatewayTranscriptionResponse(
+        text=(response.text or "").strip(),
+        usage=getattr(response, "usage", None),
+        raw=response,
+    )
+
+
+def transcribe_audio_file_diarized(
+    audio_bytes: bytes,
+    extension: str,
+    mime_type: str,
+) -> GatewayTranscriptionResponse:
+    file_name = f"upload.{extension.strip() or 'webm'}"
+    response = _client().audio.transcriptions.create(
+        model="gpt-4o-transcribe-diarize",
+        file=(file_name, audio_bytes, mime_type),
+        response_format="verbose_json",
+    )
+    return GatewayTranscriptionResponse(
+        text=(getattr(response, "text", "") or "").strip(),
+        usage=getattr(response, "usage", None),
+        raw=response,
+    )
 
 
 def suggest_minutes_json(system_instruction: str, user_prompt: str) -> GatewayChatResponse:
@@ -50,7 +73,6 @@ def suggest_minutes_json(system_instruction: str, user_prompt: str) -> GatewayCh
             {"role": "system", "content": system_instruction},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.1,
     )
     content = response.choices[0].message.content or "{}"
     return GatewayChatResponse(content=content, usage=getattr(response, "usage", None))

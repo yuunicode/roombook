@@ -8,7 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.settings import SESSION_COOKIE_NAME
 from app.infra.db import get_db_session
 from app.service.ai_quota_service import apply_ai_usage_cost, ensure_quota_available
-from app.service.ai_service import suggest_minutes_bullets, transcribe_audio_chunk
+from app.service.ai_service import (
+    suggest_minutes_bullets,
+    transcribe_audio_chunk,
+    transcribe_audio_file_diarized,
+)
 from app.service.auth_service import AuthUser, get_user_from_session_token
 from app.service.domain import DomainError
 
@@ -31,6 +35,17 @@ class TranscribeChunkRequest(BaseModel):
 
 
 class TranscribeChunkResponse(BaseModel):
+    text: str
+    used_usd: float
+    remaining_usd: float
+
+
+class TranscribeFileRequest(BaseModel):
+    audio_base64: str
+    mime_type: str | None = None
+
+
+class TranscribeFileResponse(BaseModel):
     text: str
     used_usd: float
     remaining_usd: float
@@ -117,6 +132,39 @@ async def suggest_minutes_api(
         agenda=result.agenda,
         meeting_content=result.meeting_content,
         meeting_result=result.meeting_result,
+        used_usd=float(applied.used_usd),
+        remaining_usd=float(applied.remaining_usd),
+    )
+
+
+@router.post(
+    "/transcribe-file",
+    response_model=TranscribeFileResponse,
+    responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}},
+)
+async def transcribe_file_api(
+    payload: TranscribeFileRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> TranscribeFileResponse | JSONResponse:
+    auth_user = await _require_auth_user(request, db)
+    if auth_user is None:
+        return _error_response(status.HTTP_401_UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다.")
+
+    quota = await ensure_quota_available(auth_user.id, db)
+    if isinstance(quota, DomainError):
+        return _error_response(_error_status(quota.code), quota.code, quota.message)
+
+    result = await asyncio.to_thread(
+        transcribe_audio_file_diarized,
+        payload.audio_base64,
+        payload.mime_type,
+    )
+    if isinstance(result, DomainError):
+        return _error_response(_error_status(result.code), result.code, result.message)
+    applied = await apply_ai_usage_cost(auth_user.id, result.usd_cost, db)
+    return TranscribeFileResponse(
+        text=result.text,
         used_usd=float(applied.used_usd),
         remaining_usd=float(applied.remaining_usd),
     )
