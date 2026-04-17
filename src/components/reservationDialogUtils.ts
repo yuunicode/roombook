@@ -65,6 +65,7 @@ export function useReservationTimeSelection({
 
   useEffect(() => {
     if (!enabled || !selectedDate) return;
+    if (!startTime || !endTime) return;
     const start = parse(startTime, 'HH:mm', selectedDate);
     const end = parse(endTime, 'HH:mm', selectedDate);
     if (end <= start || isRangeBlocked(start, end) || blockedStartSlots.has(startTime)) {
@@ -97,6 +98,15 @@ export function useReservationTimeSelection({
   const handleTimeClick = useCallback(
     (slot: string) => {
       if (!selectedDate) return;
+
+      if (!startTime) {
+        if (blockedStartSlots.has(slot)) return;
+        setStartTime(slot);
+        setEndTime('');
+        setIsSelectingEnd(true);
+        return;
+      }
+
       const lastSlot = TIME_SLOTS[TIME_SLOTS.length - 1];
 
       if (!isSelectingEnd) {

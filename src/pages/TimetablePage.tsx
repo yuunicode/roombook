@@ -51,6 +51,7 @@ function TimetablePage() {
   const [reservationEnd, setReservationEnd] = useState<Date>(
     new Date(roundToNearestHalfHour(new Date()).getTime() + 60 * 60 * 1000)
   );
+  const [startWithEmptyTimeSelection, setStartWithEmptyTimeSelection] = useState(false);
   const [selectedReservationId, setSelectedReservationId] = useState<string | null>(null);
 
   const roomOptions = rooms.map((room) => ({
@@ -116,6 +117,16 @@ function TimetablePage() {
     }
     setReservationStart(start);
     setReservationEnd(end);
+    setStartWithEmptyTimeSelection(false);
+    setIsReservationOpen(true);
+  };
+
+  const handleOpenReservationFromMonth = (date: Date) => {
+    const selectedDate = new Date(date);
+    selectedDate.setHours(0, 0, 0, 0);
+    setReservationStart(selectedDate);
+    setReservationEnd(selectedDate);
+    setStartWithEmptyTimeSelection(true);
     setIsReservationOpen(true);
   };
 
@@ -129,6 +140,7 @@ function TimetablePage() {
     today.setHours(9, 0, 0, 0);
     setReservationStart(today);
     setReservationEnd(new Date(today.getTime() + 60 * 60 * 1000));
+    setStartWithEmptyTimeSelection(false);
     setIsReservationOpen(true);
   };
 
@@ -299,7 +311,7 @@ function TimetablePage() {
               reservations={visibleReservations}
               currentDate={calendarDate}
               onNavigate={setCalendarDate}
-              onSelectSlot={handleOpenReservationFromGrid}
+              onSelectDate={handleOpenReservationFromMonth}
               onSelectReservation={handleOpenReservationStatus}
             />
           )}
@@ -310,6 +322,7 @@ function TimetablePage() {
         isOpen={isReservationOpen}
         initialStart={reservationStart}
         initialEnd={reservationEnd}
+        startWithEmptyTimeSelection={startWithEmptyTimeSelection}
         currentUser={currentUser}
         users={users}
         labelOptions={reservationLabels}

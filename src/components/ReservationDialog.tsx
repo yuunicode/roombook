@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { format, parse, startOfDay } from 'date-fns';
+import { format, parse } from 'date-fns';
 import { DayPicker } from 'react-day-picker';
 import { ko } from 'date-fns/locale';
 import type { AppUser } from '../stores';
@@ -28,6 +28,7 @@ type ReservationDialogProps = {
   isOpen: boolean;
   initialStart: Date;
   initialEnd: Date;
+  startWithEmptyTimeSelection?: boolean;
   currentUser: AppUser | null;
   users: AppUser[];
   labelOptions: string[];
@@ -40,6 +41,7 @@ function ReservationDialog({
   isOpen,
   initialStart,
   initialEnd,
+  startWithEmptyTimeSelection = false,
   currentUser,
   users,
   labelOptions,
@@ -69,6 +71,13 @@ function ReservationDialog({
       setExternalAttendees('');
       setSelectedDate(initialStart);
 
+      if (startWithEmptyTimeSelection) {
+        setStartTime('');
+        setEndTime('');
+        setIsSelectingEnd(false);
+        return;
+      }
+
       // Ensure initial times are within our 09:00-18:00 bounds for the UI
       const startStr = format(initialStart, 'HH:mm');
       const endStr = format(initialEnd, 'HH:mm');
@@ -76,7 +85,7 @@ function ReservationDialog({
       setEndTime(TIME_SLOTS.includes(endStr) ? endStr : '10:00');
       setIsSelectingEnd(false);
     }
-  }, [isOpen, currentUser, initialStart, initialEnd, labelOptions]);
+  }, [isOpen, currentUser, initialStart, initialEnd, labelOptions, startWithEmptyTimeSelection]);
 
   const filteredUsers = useMemo(
     () => filterReservationUsers(attendeeQuery, selectedAttendees, users),
@@ -101,6 +110,10 @@ function ReservationDialog({
 
   const handleConfirm = async () => {
     if (!title.trim() || !selectedDate) return;
+    if (!startTime || !endTime) {
+      alert('시작시간과 종료시간을 선택해 주세요.');
+      return;
+    }
 
     const start = parse(startTime, 'HH:mm', selectedDate);
     const end = parse(endTime, 'HH:mm', selectedDate);
@@ -147,7 +160,6 @@ function ReservationDialog({
               onSelect={setSelectedDate}
               locale={ko}
               weekStartsOn={1}
-              disabled={{ before: startOfDay(new Date()) }}
               hidden={{ dayOfWeek: [0, 6] }}
             />
           </div>
@@ -158,7 +170,8 @@ function ReservationDialog({
               {TIME_SLOTS.map((slot) => {
                 const isStart = startTime === slot;
                 const isEnd = endTime === slot;
-                const isInRange = slot > startTime && slot < endTime;
+                const isInRange =
+                  Boolean(startTime && endTime) && slot > startTime && slot < endTime;
                 const isDisabled = !isSelectingEnd && blockedStartSlots.has(slot) && !isEnd;
 
                 return (
@@ -193,7 +206,11 @@ function ReservationDialog({
                 className="status-badge"
                 style={{ background: 'rgba(94, 106, 210, 0.06)', color: 'var(--accent)' }}
               >
-                {startTime} - {endTime}
+                {startTime && endTime
+                  ? `${startTime} - ${endTime}`
+                  : startTime
+                    ? `${startTime} 이후 종료시간 선택`
+                    : '시작시간 선택'}
               </span>
             </div>
           </div>

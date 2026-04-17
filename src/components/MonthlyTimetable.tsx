@@ -1,10 +1,8 @@
-import React from 'react';
 import { Calendar, Views, dateFnsLocalizer, type EventProps } from 'react-big-calendar';
 import { format, getDay, parse, startOfWeek } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { getReservationEventStyle } from './weeklyTimetableUtils';
 import type { TimetableReservation } from './WeeklyTimetable';
-import type { DateCellWrapperProps } from 'react-big-calendar';
 
 const locales = {
   ko,
@@ -29,35 +27,11 @@ function MonthlyEventItem({ event }: EventProps<TimetableReservation>) {
   return <span className="monthly-event-title">{titleLine}</span>;
 }
 
-/**
- * 월간 뷰 날짜 셀 클릭 시 정확한 날짜를 전달하기 위한 래퍼
- * CSS로 주말을 숨겼을 때 발생하는 좌표 오차를 무시하고 실제 데이터 날짜를 사용합니다.
- */
-type DateCellWrapperWithSelectProps = DateCellWrapperProps;
-
-type DateCellWrapperClickProps = DateCellWrapperWithSelectProps & {
-  onSelect: (date: Date) => void;
-};
-
-const DateCellWrapper = ({ children, value, onSelect }: DateCellWrapperClickProps) => {
-  const day = value.getDay();
-  const isWeekend = day === 0 || day === 6;
-
-  if (isWeekend) {
-    return <div className="rbc-day-bg weekend-hidden" style={{ display: 'none' }} />;
-  }
-
-  return React.cloneElement(children, {
-    onClick: () => onSelect(value),
-    style: { ...children.props.style, cursor: 'pointer' },
-  });
-};
-
 type MonthlyTimetableProps = {
   reservations: TimetableReservation[];
   currentDate: Date;
   onNavigate: (nextDate: Date) => void;
-  onSelectSlot: (start: Date, end: Date) => void;
+  onSelectDate: (date: Date) => void;
   onSelectReservation?: (reservation: TimetableReservation) => void;
 };
 
@@ -65,15 +39,33 @@ function MonthlyTimetable({
   reservations,
   currentDate,
   onNavigate,
-  onSelectSlot,
+  onSelectDate,
   onSelectReservation,
 }: MonthlyTimetableProps) {
   const handleDayClick = (date: Date) => {
-    const start = new Date(date);
-    start.setHours(9, 0, 0, 0);
-    const end = new Date(date);
-    end.setHours(10, 0, 0, 0);
-    onSelectSlot(start, end);
+    onSelectDate(date);
+  };
+
+  const DateHeaderButton = ({ date, label }: { date: Date; label: string }) => {
+    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+    if (isWeekend) return null;
+
+    return (
+      <button
+        type="button"
+        onClick={() => handleDayClick(date)}
+        style={{
+          border: 'none',
+          background: 'transparent',
+          padding: 0,
+          font: 'inherit',
+          color: 'inherit',
+          cursor: 'pointer',
+        }}
+      >
+        {label}
+      </button>
+    );
   };
 
   return (
@@ -93,9 +85,9 @@ function MonthlyTimetable({
         style={{ height: 750 }}
         components={{
           event: MonthlyEventItem,
-          dateCellWrapper: (props: DateCellWrapperProps) => (
-            <DateCellWrapper {...props} onSelect={handleDayClick} />
-          ),
+          month: {
+            dateHeader: DateHeaderButton,
+          },
         }}
         eventPropGetter={(event) => getReservationEventStyle(event as TimetableReservation)}
         messages={{
