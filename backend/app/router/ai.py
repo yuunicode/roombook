@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import time
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
@@ -11,12 +13,12 @@ from app.service.ai_quota_service import apply_ai_usage_cost, ensure_quota_avail
 from app.service.ai_service import (
     suggest_minutes_bullets,
     transcribe_audio_chunk,
-    transcribe_audio_file_diarized,
 )
 from app.service.auth_service import AuthUser, get_user_from_session_token
 from app.service.domain import DomainError
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
+logger = logging.getLogger(__name__)
 
 
 class ErrorDetail(BaseModel):
@@ -35,17 +37,6 @@ class TranscribeChunkRequest(BaseModel):
 
 
 class TranscribeChunkResponse(BaseModel):
-    text: str
-    used_usd: float
-    remaining_usd: float
-
-
-class TranscribeFileRequest(BaseModel):
-    audio_base64: str
-    mime_type: str | None = None
-
-
-class TranscribeFileResponse(BaseModel):
     text: str
     used_usd: float
     remaining_usd: float
@@ -118,6 +109,13 @@ async def suggest_minutes_api(
     if isinstance(quota, DomainError):
         return _error_response(_error_status(quota.code), quota.code, quota.message)
 
+    start = time.perf_counter()
+    transcript_length = len(payload.transcript.strip())
+    logger.info(
+        "suggest-minutes started user_id=%s transcript_length=%s",
+        auth_user.id,
+        transcript_length,
+    )
     result = await asyncio.to_thread(
         suggest_minutes_bullets,
         payload.transcript,
@@ -125,46 +123,34 @@ async def suggest_minutes_api(
         payload.existing_meeting_content or "",
         payload.existing_meeting_result or "",
     )
+    elapsed_ms = round((time.perf_counter() - start) * 1000)
     if isinstance(result, DomainError):
+        logger.warning(
+            "suggest-minutes failed user_id=%s transcript_length=%s elapsed_ms=%s code=%s",
+            auth_user.id,
+            transcript_length,
+            elapsed_ms,
+            result.code,
+        )
         return _error_response(_error_status(result.code), result.code, result.message)
     applied = await apply_ai_usage_cost(auth_user.id, result.usd_cost, db)
+    logger.info(
+        (
+            "suggest-minutes completed user_id=%s transcript_length=%s elapsed_ms=%s "
+            "used_usd=%.4f agenda_count=%s content_count=%s result_count=%s"
+        ),
+        auth_user.id,
+        transcript_length,
+        elapsed_ms,
+        result.usd_cost,
+        len(result.agenda),
+        len(result.meeting_content),
+        len(result.meeting_result),
+    )
     return SuggestMinutesResponse(
         agenda=result.agenda,
         meeting_content=result.meeting_content,
         meeting_result=result.meeting_result,
-        used_usd=float(applied.used_usd),
-        remaining_usd=float(applied.remaining_usd),
-    )
-
-
-@router.post(
-    "/transcribe-file",
-    response_model=TranscribeFileResponse,
-    responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}},
-)
-async def transcribe_file_api(
-    payload: TranscribeFileRequest,
-    request: Request,
-    db: AsyncSession = Depends(get_db_session),
-) -> TranscribeFileResponse | JSONResponse:
-    auth_user = await _require_auth_user(request, db)
-    if auth_user is None:
-        return _error_response(status.HTTP_401_UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다.")
-
-    quota = await ensure_quota_available(auth_user.id, db)
-    if isinstance(quota, DomainError):
-        return _error_response(_error_status(quota.code), quota.code, quota.message)
-
-    result = await asyncio.to_thread(
-        transcribe_audio_file_diarized,
-        payload.audio_base64,
-        payload.mime_type,
-    )
-    if isinstance(result, DomainError):
-        return _error_response(_error_status(result.code), result.code, result.message)
-    applied = await apply_ai_usage_cost(auth_user.id, result.usd_cost, db)
-    return TranscribeFileResponse(
-        text=result.text,
         used_usd=float(applied.used_usd),
         remaining_usd=float(applied.remaining_usd),
     )

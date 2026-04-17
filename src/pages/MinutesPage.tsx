@@ -6,6 +6,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
+import { flushSync } from 'react-dom';
 import { format } from 'date-fns';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppState, type AppReservation, type AppUser } from '../stores';
@@ -16,7 +17,6 @@ import {
   getMinutesLock as getMinutesLockApi,
   releaseMinutesLock as releaseMinutesLockApi,
   suggestMinutesFromTranscript,
-  transcribeAudioFile,
   transcribeChunk,
   updateMinutesLiveState as updateMinutesLiveStateApi,
   type MinutesLockDto,
@@ -44,8 +44,6 @@ type EditLock = {
   updatedAt: number;
 };
 
-type AutoRecordMode = 'record' | 'upload';
-
 const LOCK_HEARTBEAT_MS = 3000;
 const LIVE_SYNC_MS = 5000;
 const SILENCE_PARAGRAPH_MS = 1200;
@@ -56,6 +54,10 @@ const BULLET_SYMBOLS = ['•', '◦', '▪', '▫'] as const;
 const BULLET_PATTERN = /^(\t{0,3})([•◦▪▫])\s?(.*)$/;
 const RECORDING_SEGMENT_SECONDS = 15;
 const MIN_FINAL_SEGMENT_SECONDS = 0.75;
+const LEAVE_EDIT_CONFIRM_MESSAGE =
+  '수정완료를 누르지 않고 나가면 변경사항이 저장되지 않습니다. 이동하시겠습니까?';
+const GENERATING_SUMMARY_BLOCK_MESSAGE =
+  '회의록 자동생성 중입니다. 완료될 때까지 페이지를 나갈 수 없습니다.';
 function getBulletPrefix(level: number) {
   const normalized = Math.max(0, Math.min(level, BULLET_SYMBOLS.length - 1));
   return `${BULLET_SYMBOLS[normalized]} `;
@@ -74,35 +76,49 @@ function formatDateToken(dateInput: string, fallbackDate: Date) {
   return format(fallbackDate, 'yyyyMMdd');
 }
 
-function normalizeBulletText(value: string) {
-  return value
-    .trim()
-    .replace(/^[-*•◦▪▫]\s*/, '')
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
+function formatSuggestionBullets(suggestions: string[]) {
+  return suggestions
+    .map((item) =>
+      item
+        .trim()
+        .replace(/^(안건|주제|내용|결과)\s*:\s*/i, '')
+        .replace(/^[-*•◦▪▫]+\s*/, '')
+        .trim()
+    )
+    .filter(Boolean)
+    .map((item) => `- ${item}`)
+    .join('\n');
 }
 
-function mergeBulletPoints(existingText: string, suggestions: string[]) {
-  const existingLines = existingText
+function displaySuggestionItem(value: string) {
+  return value.trim().replace(/^[-*•◦▪▫]+\s*/, '');
+}
+
+function normalizeMeetingContentBlock(value: string) {
+  const lines = value
     .split('\n')
     .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  const known = new Set(existingLines.map(normalizeBulletText));
-  const appended: string[] = [];
-  for (const item of suggestions) {
-    const normalized = normalizeBulletText(item);
-    if (!normalized || known.has(normalized)) continue;
-    known.add(normalized);
-    const cleaned = item
-      .trim()
-      .replace(/^(안건|주제|내용|결과)\s*:\s*/i, '')
-      .trim();
-    appended.push(`- ${cleaned}`);
+    .filter(Boolean)
+    .map((line) =>
+      line
+        .replace(/^(안건|주제|내용|결과)\s*:\s*/i, '')
+        .replace(/^[-*•◦▪▫]+\s*/, '')
+        .trim()
+    )
+    .filter(Boolean);
+
+  if (lines.length === 0) return '';
+
+  const [title, ...details] = lines;
+  if (details.length === 0) {
+    return `- ${title}`;
   }
-  if (appended.length === 0) {
-    return existingText;
-  }
-  return [existingText.trim(), ...appended].filter((chunk) => chunk.length > 0).join('\n');
+
+  return [`- ${title}`, ...details.map((detail) => `\t◦ ${detail}`)].join('\n');
+}
+
+function formatMeetingContentBlocks(suggestions: string[]) {
+  return suggestions.map(normalizeMeetingContentBlock).filter(Boolean).join('\n\n');
 }
 
 function buildMinutesMarkdown(draft: MinutesDraft, internalAttendeeText: string) {
@@ -202,14 +218,12 @@ function MinutesPage() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isStoppingRecording, setIsStoppingRecording] = useState(false);
-  const [autoRecordMode, setAutoRecordMode] = useState<AutoRecordMode>('record');
-  const [isUploadingAudioFile, setIsUploadingAudioFile] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [transcriptText, setTranscriptText] = useState('');
   const [isAutoRecordPanelOpen, setIsAutoRecordPanelOpen] = useState(false);
   const [sharedIsRecording, setSharedIsRecording] = useState(false);
   const [sharedRecorderName, setSharedRecorderName] = useState('');
   const [sharedRecorderUserId, setSharedRecorderUserId] = useState('');
+  const [summaryGeneratedAt, setSummaryGeneratedAt] = useState<number | null>(null);
   const [summarySuggestion, setSummarySuggestion] = useState<MinutesSuggestionResult>({
     agenda: [],
     meeting_content: [],
@@ -219,8 +233,8 @@ function MinutesPage() {
   const historyRef = useRef<MinutesDraft[]>([]);
   const lastSavedKeyRef = useRef('');
   const isSavingRef = useRef(false);
+  const isGeneratingSummaryRef = useRef(false);
   const recordingActiveRef = useRef(false);
-  const uploadProgressIntervalRef = useRef<number | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -242,7 +256,6 @@ function MinutesPage() {
   const agendaRef = useRef<HTMLTextAreaElement>(null);
   const meetingContentRef = useRef<HTMLTextAreaElement>(null);
   const meetingResultRef = useRef<HTMLTextAreaElement>(null);
-  const uploadAudioInputRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
   const currentUser = useMemo(
@@ -407,10 +420,6 @@ function MinutesPage() {
       audioContextRef.current = null;
       analyserRef.current = null;
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-      if (uploadProgressIntervalRef.current !== null) {
-        window.clearInterval(uploadProgressIntervalRef.current);
-        uploadProgressIntervalRef.current = null;
-      }
     };
   }, []);
 
@@ -684,6 +693,18 @@ function MinutesPage() {
     }
   }, [isEditing]);
 
+  useEffect(() => {
+    if (!isEditing && !isGeneratingSummary) return undefined;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isEditing, isGeneratingSummary]);
+
   const handleEditToggle = () => {
     if (isEditing) {
       void (async () => {
@@ -745,26 +766,6 @@ function MinutesPage() {
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     mediaStreamRef.current = null;
   }, []);
-
-  const stopUploadProgressTimer = useCallback(() => {
-    if (uploadProgressIntervalRef.current !== null) {
-      window.clearInterval(uploadProgressIntervalRef.current);
-      uploadProgressIntervalRef.current = null;
-    }
-  }, []);
-
-  const startUploadProcessingProgress = useCallback(() => {
-    stopUploadProgressTimer();
-    uploadProgressIntervalRef.current = window.setInterval(() => {
-      setUploadProgress((current) => {
-        if (current >= 99) {
-          stopUploadProgressTimer();
-          return current;
-        }
-        return current + 1;
-      });
-    }, 400);
-  }, [stopUploadProgressTimer]);
 
   const queueTranscriptionChunk = useCallback(
     async (blob: Blob) => {
@@ -990,89 +991,27 @@ function MinutesPage() {
     setSaveMessage('녹음을 종료하는 중입니다...');
   }, [flushPcmSegment, isStoppingRecording, reservationId, stopAudioResources]);
 
-  const handleUploadedAudioFile = useCallback(
-    (file: File | null) => {
-      if (!file) return;
-      if (!isEditing || !reservationId) {
-        setSaveMessage('수정 모드에서만 음성 파일을 전사할 수 있습니다.');
-        return;
-      }
-      if (isRecording || isStoppingRecording) {
-        setSaveMessage('녹음 중에는 음성 파일을 업로드할 수 없습니다.');
-        return;
-      }
-      void (async () => {
-        try {
-          setIsUploadingAudioFile(true);
-          setIsTranscribing(true);
-          setUploadProgress(1);
-          setSaveMessage(`"${file.name}" 업로드 중입니다...`);
-          const audioBase64 = await blobToBase64(file);
-          setSaveMessage(`"${file.name}" 전사 요청을 보내는 중입니다...`);
-          startUploadProcessingProgress();
-          const result = await transcribeAudioFile(
-            {
-              audio_base64: audioBase64,
-              mime_type: file.type || 'audio/webm',
-            },
-            {
-              onUploadProgress: (progress) => {
-                setUploadProgress((current) => Math.max(current, progress));
-              },
-            }
-          );
-          setSaveMessage(`"${file.name}" 전사 처리 중입니다...`);
-          const nextText = result.text.trim();
-          if (!nextText) {
-            stopUploadProgressTimer();
-            setUploadProgress(100);
-            setSaveMessage('음성 파일에서 전사 결과를 찾지 못했습니다.');
-            return;
-          }
-          const baseText = transcriptTextRef.current.trim();
-          const mergedText = baseText ? `${baseText}\n\n${nextText}` : nextText;
-          const liveState = await updateMinutesLiveStateApi(reservationId, {
-            transcript_text: mergedText,
-          });
-          stopUploadProgressTimer();
-          setUploadProgress(100);
-          setTranscriptText(liveState.transcript_text ?? '');
-          setSharedIsRecording(liveState.is_recording);
-          setSharedRecorderName(liveState.updated_by_name ?? '');
-          setSharedRecorderUserId(liveState.updated_by_user_id ?? '');
-          setSaveMessage(`"${file.name}" 전사가 반영되었습니다.`);
-        } catch (error) {
-          stopUploadProgressTimer();
-          setUploadProgress(0);
-          const message = error instanceof Error ? error.message : '음성 파일 전사에 실패했습니다.';
-          setSaveMessage(message);
-        } finally {
-          setIsUploadingAudioFile(false);
-          setIsTranscribing(false);
-          if (uploadAudioInputRef.current) {
-            uploadAudioInputRef.current.value = '';
-          }
-        }
-      })();
-    },
-    [
-      isEditing,
-      isRecording,
-      isStoppingRecording,
-      reservationId,
-      startUploadProcessingProgress,
-      stopUploadProgressTimer,
-    ]
-  );
-
   const handleGenerateMinutes = useCallback(() => {
+    if (isGeneratingSummaryRef.current) {
+      return;
+    }
     void (async () => {
       if (!transcriptText.trim()) {
         setSaveMessage('전사 텍스트가 비어있습니다.');
         return;
       }
       try {
-        setIsGeneratingSummary(true);
+        isGeneratingSummaryRef.current = true;
+        flushSync(() => {
+          setIsGeneratingSummary(true);
+          setSummaryGeneratedAt(null);
+          setSummarySuggestion({
+            agenda: [],
+            meeting_content: [],
+            meeting_result: [],
+          });
+          setSaveMessage('회의록 자동생성 중입니다...');
+        });
         const result = await suggestMinutesFromTranscript({
           transcript: transcriptText,
           existing_agenda: draft.agenda,
@@ -1080,11 +1019,23 @@ function MinutesPage() {
           existing_meeting_result: draft.meetingResult,
         });
         setSummarySuggestion(result);
-        setSaveMessage('AI 제안이 생성되었습니다.');
+        setSummaryGeneratedAt(Date.now());
+        if (
+          result.agenda.length === 0 &&
+          result.meeting_content.length === 0 &&
+          result.meeting_result.length === 0
+        ) {
+          setSaveMessage('생성은 완료되었지만 새로 제안할 내용이 없습니다.');
+          return;
+        }
+        setSaveMessage(
+          `AI 제안이 생성되었습니다. (안건 ${result.agenda.length}건, 내용 ${result.meeting_content.length}건, 결과 ${result.meeting_result.length}건)`
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : 'AI 제안 생성에 실패했습니다.';
         setSaveMessage(message);
       } finally {
+        isGeneratingSummaryRef.current = false;
         setIsGeneratingSummary(false);
       }
     })();
@@ -1097,36 +1048,33 @@ function MinutesPage() {
         return;
       }
       if (section === 'agenda') {
-        updateDraft({ agenda: mergeBulletPoints(draft.agenda, summarySuggestion.agenda) });
+        updateDraft({ agenda: formatSuggestionBullets(summarySuggestion.agenda) });
         setSaveMessage('주요 안건에 AI 제안을 반영했습니다.');
         return;
       }
       if (section === 'meeting_content') {
         updateDraft({
-          meetingContent: mergeBulletPoints(
-            draft.meetingContent,
-            summarySuggestion.meeting_content
-          ),
+          meetingContent: formatMeetingContentBlocks(summarySuggestion.meeting_content),
         });
         setSaveMessage('회의 내용에 AI 제안을 반영했습니다.');
         return;
       }
       updateDraft({
-        meetingResult: mergeBulletPoints(draft.meetingResult, summarySuggestion.meeting_result),
+        meetingResult: formatSuggestionBullets(summarySuggestion.meeting_result),
       });
       setSaveMessage('회의 결과에 AI 제안을 반영했습니다.');
     },
-    [
-      draft.agenda,
-      draft.meetingContent,
-      draft.meetingResult,
-      isEditing,
-      summarySuggestion,
-      updateDraft,
-    ]
+    [isEditing, summarySuggestion, updateDraft]
   );
 
   const handleGoBack = () => {
+    if (isGeneratingSummary) {
+      setSaveMessage(GENERATING_SUMMARY_BLOCK_MESSAGE);
+      return;
+    }
+    if (isEditing && !window.confirm(LEAVE_EDIT_CONFIRM_MESSAGE)) {
+      return;
+    }
     if (window.history.length > 1) {
       navigate(-1);
       return;
@@ -1153,6 +1101,10 @@ function MinutesPage() {
   }
 
   const showAutoRecordPanel = isEditing && isAutoRecordPanelOpen;
+  const hasSummarySuggestion =
+    summarySuggestion.agenda.length > 0 ||
+    summarySuggestion.meeting_content.length > 0 ||
+    summarySuggestion.meeting_result.length > 0;
 
   return (
     <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px 0 40px' }}>
@@ -1461,20 +1413,7 @@ function MinutesPage() {
             <div style={{ borderTop: '1px dashed var(--border)', margin: '18px 0' }} />
 
             <div className="status-info-group" style={{ marginBottom: '16px' }}>
-              <div
-                style={{
-                  fontSize: '18px',
-                  fontWeight: 700,
-                  color: '#6c4f2f',
-                  marginBottom: '8px',
-                  background: '#fff1d6',
-                  border: '1px solid #f2ddb2',
-                  borderRadius: '8px',
-                  padding: '8px 12px',
-                }}
-              >
-                🧭 주요 안건
-              </div>
+              <div className="minutes-section-title">주요 안건</div>
               <textarea
                 ref={agendaRef}
                 className="minutes-textarea"
@@ -1494,20 +1433,7 @@ function MinutesPage() {
             </div>
 
             <div className="status-info-group" style={{ marginBottom: '16px' }}>
-              <div
-                style={{
-                  fontSize: '18px',
-                  fontWeight: 700,
-                  color: '#2d5870',
-                  marginBottom: '8px',
-                  background: '#e8f4ff',
-                  border: '1px solid #cfe4f6',
-                  borderRadius: '8px',
-                  padding: '8px 12px',
-                }}
-              >
-                📝 회의 내용
-              </div>
+              <div className="minutes-section-title">회의 내용</div>
               <textarea
                 ref={meetingContentRef}
                 className="minutes-textarea"
@@ -1527,20 +1453,7 @@ function MinutesPage() {
             </div>
 
             <div className="status-info-group">
-              <div
-                style={{
-                  fontSize: '18px',
-                  fontWeight: 700,
-                  color: '#355f3b',
-                  marginBottom: '8px',
-                  background: '#ebf8e6',
-                  border: '1px solid #d0e8c6',
-                  borderRadius: '8px',
-                  padding: '8px 12px',
-                }}
-              >
-                ✅ 회의 결과
-              </div>
+              <div className="minutes-section-title">회의 결과</div>
               <textarea
                 ref={meetingResultRef}
                 className="minutes-textarea"
@@ -1579,8 +1492,7 @@ function MinutesPage() {
               <div>
                 <h3 style={{ margin: 0, fontSize: '14px' }}>회의 자동기록</h3>
                 <p style={{ margin: '4px 0 0', color: 'var(--text-soft)', fontSize: '12px' }}>
-                  녹음하거나 음성 파일을 올리면 전사 내용을 여기에서 확인하고 바로 회의록으로 정리할
-                  수 있습니다.
+                  녹음하면 전사 내용을 여기에서 확인하고 바로 회의록으로 정리할 수 있습니다.
                 </p>
               </div>
               <button
@@ -1620,139 +1532,29 @@ function MinutesPage() {
                 초기화
               </button>
             </div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                gap: '8px',
-              }}
-            >
-              <button
-                className="nav-menu-item"
-                type="button"
-                onClick={() => setAutoRecordMode('record')}
-                style={{
-                  height: '34px',
-                  justifyContent: 'center',
-                  background: autoRecordMode === 'record' ? 'rgba(36, 99, 235, 0.12)' : '#ffffff',
-                  borderColor:
-                    autoRecordMode === 'record' ? 'rgba(36, 99, 235, 0.35)' : 'var(--border)',
-                  color: autoRecordMode === 'record' ? '#1d4ed8' : 'var(--text)',
-                }}
-              >
-                녹음
-              </button>
-              <button
-                className="nav-menu-item"
-                type="button"
-                onClick={() => setAutoRecordMode('upload')}
-                style={{
-                  height: '34px',
-                  justifyContent: 'center',
-                  background: autoRecordMode === 'upload' ? 'rgba(36, 99, 235, 0.12)' : '#ffffff',
-                  borderColor:
-                    autoRecordMode === 'upload' ? 'rgba(36, 99, 235, 0.35)' : 'var(--border)',
-                  color: autoRecordMode === 'upload' ? '#1d4ed8' : 'var(--text)',
-                }}
-              >
-                음성파일 업로드
-              </button>
-            </div>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <input
-                ref={uploadAudioInputRef}
-                type="file"
-                accept="audio/*,.mp3,.mp4,.mpeg,.mpga,.m4a,.wav,.webm"
-                style={{ display: 'none' }}
-                onChange={(event) => {
-                  handleUploadedAudioFile(event.target.files?.[0] ?? null);
-                }}
-              />
-              {autoRecordMode === 'record' ? (
-                <button
-                  className="nav-menu-item"
-                  type="button"
-                  onClick={isRecording ? handleStopRecording : handleStartRecording}
-                  disabled={
-                    isStoppingRecording ||
-                    !isEditing ||
-                    (sharedIsRecording && sharedRecorderUserId !== viewerId)
-                  }
-                  style={{
-                    height: '34px',
-                    padding: '0 12px',
-                    borderColor: '#d92d20',
-                    justifyContent: 'center',
-                    background: isRecording ? '#b42318' : '#d92d20',
-                    color: '#ffffff',
-                    flex: 1,
-                  }}
-                >
-                  {isRecording ? '녹음중...' : '녹음 시작'}
-                </button>
-              ) : (
-                <button
-                  className="nav-menu-item"
-                  type="button"
-                  onClick={() => uploadAudioInputRef.current?.click()}
-                  disabled={
-                    isRecording ||
-                    isStoppingRecording ||
-                    isTranscribing ||
-                    !isEditing ||
-                    (sharedIsRecording && sharedRecorderUserId !== viewerId)
-                  }
-                  style={{
-                    height: '34px',
-                    padding: '0 12px',
-                    justifyContent: 'center',
-                    flex: 1,
-                  }}
-                >
-                  음성파일 선택
-                </button>
-              )}
-            </div>
-            {autoRecordMode === 'upload' && (
-              <p style={{ margin: '-4px 0 0', color: 'var(--text-soft)', fontSize: '12px' }}>
-                지원 형식: mp3, mp4, mpeg, mpga, m4a, wav, webm
-              </p>
-            )}
-            {autoRecordMode === 'upload' && isUploadingAudioFile && (
-              <div
+              <button
+                className="nav-menu-item"
+                type="button"
+                onClick={isRecording ? handleStopRecording : handleStartRecording}
+                disabled={
+                  isStoppingRecording ||
+                  !isEditing ||
+                  (sharedIsRecording && sharedRecorderUserId !== viewerId)
+                }
                 style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px',
-                  padding: '10px',
-                  borderRadius: '8px',
-                  background: '#fafafb',
-                  border: '1px solid var(--border)',
+                  height: '34px',
+                  padding: '0 12px',
+                  borderColor: '#d92d20',
+                  justifyContent: 'center',
+                  background: isRecording ? '#b42318' : '#d92d20',
+                  color: '#ffffff',
+                  flex: 1,
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-                  <span style={{ color: 'var(--text-soft)' }}>업로드/전사 진행중</span>
-                  <strong>{uploadProgress}/100</strong>
-                </div>
-                <div
-                  style={{
-                    width: '100%',
-                    height: '8px',
-                    borderRadius: '999px',
-                    background: '#e5e7eb',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <div
-                    style={{
-                      width: `${uploadProgress}%`,
-                      height: '100%',
-                      background: 'linear-gradient(90deg, #2563eb 0%, #60a5fa 100%)',
-                    }}
-                  />
-                </div>
-              </div>
-            )}
+                {isRecording ? '녹음중...' : '녹음 시작'}
+              </button>
+            </div>
             <div
               style={{
                 minHeight: '140px',
@@ -1771,17 +1573,15 @@ function MinutesPage() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '12px', color: 'var(--text-soft)' }}>
-                {isUploadingAudioFile
-                  ? `음성 파일 처리 중... ${uploadProgress}/100`
-                  : isTranscribing
-                    ? '전사 처리 중...'
-                    : isRecording
-                      ? '녹음 중'
-                      : sharedIsRecording
-                        ? sharedRecorderUserId === viewerId
-                          ? '내가 다른 탭에서 녹음 중'
-                          : `${sharedRecorderName || '다른 사용자'}가 녹음 중`
-                        : '대기 중'}
+                {isTranscribing
+                  ? '전사 처리 중...'
+                  : isRecording
+                    ? '녹음 중'
+                    : sharedIsRecording
+                      ? sharedRecorderUserId === viewerId
+                        ? '내가 다른 탭에서 녹음 중'
+                        : `${sharedRecorderName || '다른 사용자'}가 녹음 중`
+                      : '대기 중'}
               </span>
               <button
                 className="linear-primary-button"
@@ -1790,7 +1590,19 @@ function MinutesPage() {
                 disabled={
                   isRecording || isTranscribing || isGeneratingSummary || !transcriptText.trim()
                 }
-                style={{ width: 'auto', padding: '0 12px', height: '30px' }}
+                style={{
+                  width: 'auto',
+                  padding: '0 12px',
+                  height: '30px',
+                  opacity:
+                    isRecording || isTranscribing || isGeneratingSummary || !transcriptText.trim()
+                      ? 0.5
+                      : 1,
+                  cursor:
+                    isRecording || isTranscribing || isGeneratingSummary || !transcriptText.trim()
+                      ? 'not-allowed'
+                      : 'pointer',
+                }}
               >
                 {isGeneratingSummary ? '생성 중...' : '회의록 자동생성'}
               </button>
@@ -1804,6 +1616,34 @@ function MinutesPage() {
                 gap: '10px',
               }}
             >
+              {isGeneratingSummary && (
+                <div
+                  style={{
+                    borderRadius: '8px',
+                    border: '1px solid #bfdbfe',
+                    background: '#eff6ff',
+                    padding: '10px 12px',
+                    fontSize: '12px',
+                    color: '#1d4ed8',
+                  }}
+                >
+                  회의록 자동생성 요청을 처리 중입니다. 전사 길이에 따라 수 초 이상 걸릴 수 있습니다.
+                </div>
+              )}
+              {!isGeneratingSummary && summaryGeneratedAt !== null && !hasSummarySuggestion && (
+                <div
+                  style={{
+                    borderRadius: '8px',
+                    border: '1px solid #e5e7eb',
+                    background: '#f9fafb',
+                    padding: '10px 12px',
+                    fontSize: '12px',
+                    color: 'var(--text-soft)',
+                  }}
+                >
+                  생성은 완료되었지만 기존 작성 내용과 겹치지 않는 새 제안이 없었습니다.
+                </div>
+              )}
               <div>
                 <div
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
@@ -1813,13 +1653,14 @@ function MinutesPage() {
                     className="nav-menu-item"
                     type="button"
                     onClick={() => applySuggestionForSection('agenda')}
+                    disabled={summarySuggestion.agenda.length === 0}
                   >
                     반영
                   </button>
                 </div>
                 <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
                   {summarySuggestion.agenda.map((item, index) => (
-                    <li key={`agenda-${index}`}>{item}</li>
+                    <li key={`agenda-${index}`}>{displaySuggestionItem(item)}</li>
                   ))}
                 </ul>
               </div>
@@ -1832,13 +1673,16 @@ function MinutesPage() {
                     className="nav-menu-item"
                     type="button"
                     onClick={() => applySuggestionForSection('meeting_content')}
+                    disabled={summarySuggestion.meeting_content.length === 0}
                   >
                     반영
                   </button>
                 </div>
                 <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
                   {summarySuggestion.meeting_content.map((item, index) => (
-                    <li key={`content-${index}`}>{item}</li>
+                    <li key={`content-${index}`} style={{ whiteSpace: 'pre-wrap' }}>
+                      {displaySuggestionItem(item)}
+                    </li>
                   ))}
                 </ul>
               </div>
@@ -1851,13 +1695,14 @@ function MinutesPage() {
                     className="nav-menu-item"
                     type="button"
                     onClick={() => applySuggestionForSection('meeting_result')}
+                    disabled={summarySuggestion.meeting_result.length === 0}
                   >
                     반영
                   </button>
                 </div>
                 <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px' }}>
                   {summarySuggestion.meeting_result.map((item, index) => (
-                    <li key={`result-${index}`}>{item}</li>
+                    <li key={`result-${index}`}>{displaySuggestionItem(item)}</li>
                   ))}
                 </ul>
               </div>

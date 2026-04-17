@@ -6,13 +6,11 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from app.core.settings import OPENAI_API_KEY
 from app.infra.openai_gateway import (
+    repair_minutes_json,
     suggest_minutes_json,
 )
 from app.infra.openai_gateway import (
     transcribe_audio_chunk as transcribe_audio_chunk_gateway,
-)
-from app.infra.openai_gateway import (
-    transcribe_audio_file_diarized as transcribe_audio_file_diarized_gateway,
 )
 from app.service.domain import DomainError
 
@@ -77,6 +75,25 @@ def _sanitize_items(values: object) -> list[str]:
         seen.add(key)
         sanitized.append(normalized)
     return sanitized
+
+
+def _parse_minutes_json(raw_content: str) -> dict[str, object] | None:
+    try:
+        parsed = json.loads(raw_content)
+    except Exception:
+        parsed = None
+    if isinstance(parsed, dict):
+        return parsed
+
+    start = raw_content.find("{")
+    end = raw_content.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        extracted = json.loads(raw_content[start : end + 1])
+    except Exception:
+        return None
+    return extracted if isinstance(extracted, dict) else None
 
 
 _SILENCE_LINE_PATTERN = re.compile(
@@ -194,12 +211,12 @@ def _require_api_key() -> DomainError | None:
 
 
 def _normalize_audio_format(mime_type: str | None) -> tuple[str, str] | DomainError:
-    raw = (mime_type or "audio/webm").strip().lower()
+    raw = (mime_type or "").strip().lower()
     content_type = raw.split(";", 1)[0].strip()
-    if "/" not in content_type:
-        content_type = "audio/webm"
+    subtype = ""
+    if "/" in content_type:
+        subtype = content_type.split("/", 1)[1].strip()
 
-    subtype = content_type.split("/", 1)[1].strip()
     if subtype == "x-wav":
         subtype = "wav"
     if subtype == "x-m4a":
@@ -257,45 +274,6 @@ def transcribe_audio_chunk(
         return DomainError(code="INVALID_ARGUMENT", message=f"전사에 실패했습니다: {exc}")
 
 
-def transcribe_audio_file_diarized(
-    audio_base64: str,
-    mime_type: str | None,
-) -> TranscriptionResult | DomainError:
-    missing_key = _require_api_key()
-    if missing_key is not None:
-        return missing_key
-
-    try:
-        audio_bytes = base64.b64decode(audio_base64)
-    except Exception:
-        return DomainError(code="INVALID_ARGUMENT", message="오디오 데이터 형식이 올바르지 않습니다.")
-    if len(audio_bytes) == 0:
-        return DomainError(code="INVALID_ARGUMENT", message="빈 오디오 데이터입니다.")
-
-    normalized_audio = _normalize_audio_format(mime_type)
-    if isinstance(normalized_audio, DomainError):
-        return normalized_audio
-    extension, normalized_mime_type = normalized_audio
-
-    try:
-        gateway_result = transcribe_audio_file_diarized_gateway(
-            audio_bytes=audio_bytes,
-            extension=extension,
-            mime_type=normalized_mime_type,
-        )
-        cleaned_text = _format_diarized_transcript(gateway_result.raw, gateway_result.text)
-        input_tokens, output_tokens = _extract_usage_tokens(gateway_result.usage)
-        usd_cost = _calc_usd_cost(
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            input_price=GPT4O_TRANSCRIPT_INPUT_PER_1M,
-            output_price=GPT4O_TRANSCRIPT_OUTPUT_PER_1M,
-        )
-        return TranscriptionResult(text=cleaned_text, usd_cost=usd_cost)
-    except Exception as exc:
-        return DomainError(code="INVALID_ARGUMENT", message=f"음성 파일 전사에 실패했습니다: {exc}")
-
-
 def suggest_minutes_bullets(
     transcript: str,
     existing_agenda: str,
@@ -312,18 +290,21 @@ def suggest_minutes_bullets(
     system_instruction = (
         "너는 회의록 정리 비서다. 반드시 한국어로 응답한다. "
         "JSON 객체만 반환하고, 키는 agenda, meeting_content, meeting_result 3개만 사용한다. "
-        "각 값은 문자열 배열이다. 각 항목은 1문장 불릿 포인트용 문장이다. "
+        "각 값은 문자열 배열이다. "
         "문장 앞에 '안건:', '주제:', '내용:', '결과:' 같은 접두어를 붙이지 않는다. "
-        "문체는 간결하고 정돈된 한국어 회의록 문장으로 유지한다. "
-        "회의에서 결정된 사항, 담당자, 후속 액션, 보류 사항이 있으면 우선적으로 정리한다. "
-        "어떤 일을 특정 기한 내에 해야 한다는 내용이 있으면 그 기한을 포함한 문장으로 정리한다. "
-        "사람 이름이나 직급이 전사 원문에 명확히 있으면 "
-        "주임, 선임, 책임, 수석 등의 한국식 직급 표기를 그대로 유지한다. "
-        "이름이나 직급이 불명확하면 추정해서 만들지 말고 중립적으로 표현한다. "
-        "구어체, 반복 표현, 불필요한 추임새는 제거하고 핵심만 정리한다. "
-        "섹션당 최대 5개 항목만 반환한다. "
+        "문체는 자연스럽고 읽기 쉬운 한국어 회의록 문장으로 유지한다. "
+        "구어체, 반복 표현, 추임새는 제거하고 핵심 논의 흐름이 잘 드러나게 요약한다. "
+        "담당자, 일정, 결정사항, 후속 액션은 전사 원문에 분명히 있을 때만 자연스럽게 포함한다. "
+        "불명확한 이름, 직급, 일정, 결론은 추정해서 만들지 않는다. "
         "이미 사용자 작성본과 의미가 겹치는 내용은 제외한다. "
-        "새로운 정보만 반환한다."
+        "새로운 정보만 반환한다. "
+        "agenda는 회의에서 다룬 안건 목록이며, 각 원소는 짧은 제목형 문장으로 작성한다. "
+        "meeting_content는 agenda 각 항목을 순서에 맞춰 풀어쓴 세부 설명이어야 한다. "
+        "meeting_content의 각 원소는 여러 줄 문자열이어도 되며, 첫 줄은 안건 제목, "
+        "그 아래 줄들은 해당 안건에 대해 오간 논의 배경, 쟁점, 검토 내용, "
+        "의견 차이, 정리된 방향 등을 이해하기 쉽게 적는다. "
+        "meeting_result는 최종 결론이 있으면 정리하고, 없으면 합의된 방향이나 남은 논점을 요약한다. "
+        "필요하면 항목 수는 자유롭게 반환해도 된다."
     )
     user_prompt = (
         "[기존 주요 안건]\n"
@@ -339,9 +320,18 @@ def suggest_minutes_bullets(
 
     try:
         gateway_result = suggest_minutes_json(system_instruction=system_instruction, user_prompt=user_prompt)
-        parsed = json.loads(gateway_result.content)
     except Exception as exc:
         return DomainError(code="INVALID_ARGUMENT", message=f"회의록 생성에 실패했습니다: {exc}")
+
+    parsed = _parse_minutes_json(gateway_result.content)
+    repaired_usage = None
+    if parsed is None:
+        try:
+            repaired = repair_minutes_json(gateway_result.content)
+            parsed = _parse_minutes_json(repaired.content)
+            repaired_usage = repaired.usage
+        except Exception as exc:
+            return DomainError(code="INVALID_ARGUMENT", message=f"회의록 생성에 실패했습니다: {exc}")
 
     if not isinstance(parsed, dict):
         return DomainError(
@@ -353,6 +343,10 @@ def suggest_minutes_bullets(
     meeting_content = _sanitize_items(parsed.get("meeting_content"))
     meeting_result = _sanitize_items(parsed.get("meeting_result"))
     input_tokens, output_tokens = _extract_usage_tokens(gateway_result.usage)
+    if repaired_usage is not None:
+        repaired_input_tokens, repaired_output_tokens = _extract_usage_tokens(repaired_usage)
+        input_tokens += repaired_input_tokens
+        output_tokens += repaired_output_tokens
     usd_cost = _calc_usd_cost(
         input_tokens=input_tokens,
         output_tokens=output_tokens,

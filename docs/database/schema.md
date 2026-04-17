@@ -93,5 +93,4 @@
 
 - `room_id`는 `rooms.id` 도메인 키를 사용한다.
 - 화면용 `room_name`은 `rooms.name` 기반으로 반환한다.
-- 초기 관리자 계정은 서버 시작 시 `ensure_admin_user()`가 동기화한다.
 - 부서 정보는 모든 사용자에 대해 필수다.
