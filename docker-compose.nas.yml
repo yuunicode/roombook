@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: roombook-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - roombook_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - roombook
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: roombook-backend
+    restart: unless-stopped
+    environment:
+      HOST: ${HOST}
+      PORT: ${PORT}
+      DEBUG: ${DEBUG}
+      DATABASE_URL: ${DATABASE_URL}
+      SESSION_SIGNING_SECRET: ${SESSION_SIGNING_SECRET}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE}
+      SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - roombook
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: roombook-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    networks:
+      - roombook
+
+volumes:
+  roombook_pg:
+
+networks:
+  roombook:
+    driver: bridge
