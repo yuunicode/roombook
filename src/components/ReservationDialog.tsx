@@ -134,10 +134,10 @@ function ReservationDialog({
     const start = parse(startTime, 'HH:mm', selectedDate);
     const end = parse(endTime, 'HH:mm', selectedDate);
     if (end <= start || isRangeBlocked(start, end) || blockedStartSlots.has(startTime)) {
-      for (let i = 0; i < TIME_SLOTS.length - 2; i += 1) {
+      for (let i = 0; i < TIME_SLOTS.length - 1; i += 1) {
         const candidateStart = TIME_SLOTS[i];
         if (blockedStartSlots.has(candidateStart)) continue;
-        const candidateEnd = TIME_SLOTS[i + 2];
+        const candidateEnd = TIME_SLOTS[i + 1];
         const rangeStart = parse(candidateStart, 'HH:mm', selectedDate);
         const rangeEnd = parse(candidateEnd, 'HH:mm', selectedDate);
         if (!isRangeBlocked(rangeStart, rangeEnd)) {
@@ -197,7 +197,7 @@ function ReservationDialog({
       const idx = TIME_SLOTS.indexOf(slot);
       if (idx < 0) return;
       let candidateEnd =
-        slot >= endTime ? TIME_SLOTS[Math.min(idx + 2, TIME_SLOTS.length - 1)] : endTime;
+        slot >= endTime ? TIME_SLOTS[Math.min(idx + 1, TIME_SLOTS.length - 1)] : endTime;
       const rangeStart = parse(slot, 'HH:mm', selectedDate);
       const rangeEnd = parse(candidateEnd, 'HH:mm', selectedDate);
       if (rangeEnd <= rangeStart || isRangeBlocked(rangeStart, rangeEnd)) {
@@ -237,7 +237,7 @@ function ReservationDialog({
         const idx = TIME_SLOTS.indexOf(slot);
         if (idx < 0) return;
         let candidateEnd =
-          slot >= endTime ? TIME_SLOTS[Math.min(idx + 2, TIME_SLOTS.length - 1)] : endTime;
+          slot >= endTime ? TIME_SLOTS[Math.min(idx + 1, TIME_SLOTS.length - 1)] : endTime;
         const rangeStart = parse(slot, 'HH:mm', selectedDate);
         let found = false;
         for (let endIdx = idx + 1; endIdx < TIME_SLOTS.length; endIdx += 1) {
@@ -374,7 +374,7 @@ function ReservationDialog({
                 const isStart = startTime === slot;
                 const isEnd = endTime === slot;
                 const isInRange = slot > startTime && slot < endTime;
-                const isDisabled = !isSelectingEnd && blockedStartSlots.has(slot);
+                const isDisabled = !isSelectingEnd && blockedStartSlots.has(slot) && !isEnd;
 
                 return (
                   <button
@@ -517,16 +517,20 @@ function ReservationDialog({
             </div>
           </div>
 
-          <div className="status-card-footer" style={{ flexWrap: 'wrap' }}>
-            <button className="nav-menu-item" style={{ whiteSpace: 'nowrap' }} onClick={onClose}>
+          <div className="status-card-footer reservation-card-footer" style={{ flexWrap: 'wrap' }}>
+            <button
+              className="nav-menu-item"
+              style={{ whiteSpace: 'nowrap', minWidth: '88px', justifyContent: 'center' }}
+              onClick={onClose}
+            >
               취소
             </button>
             <button
               className="linear-primary-button"
               style={{
                 width: 'auto',
-                minWidth: '96px',
-                padding: '0 24px',
+                minWidth: '88px',
+                padding: '0 18px',
                 marginTop: 0,
                 whiteSpace: 'nowrap',
               }}

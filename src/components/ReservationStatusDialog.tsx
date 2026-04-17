@@ -4,6 +4,7 @@ import { DayPicker } from 'react-day-picker';
 import { ko } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import type { AppUser } from '../stores';
+import { formatAgendaMultiline } from '../utils/minutesText';
 import Dialog from './ui/Dialog';
 
 const MAX_BULLET_LEVEL = 4;
@@ -153,10 +154,10 @@ function ReservationStatusDialog({
     const start = parse(startTime, 'HH:mm', selectedDate);
     const end = parse(endTime, 'HH:mm', selectedDate);
     if (end <= start || isRangeBlocked(start, end) || blockedStartSlots.has(startTime)) {
-      for (let i = 0; i < TIME_SLOTS.length - 2; i += 1) {
+      for (let i = 0; i < TIME_SLOTS.length - 1; i += 1) {
         const candidateStart = TIME_SLOTS[i];
         if (blockedStartSlots.has(candidateStart)) continue;
-        const candidateEnd = TIME_SLOTS[i + 2];
+        const candidateEnd = TIME_SLOTS[i + 1];
         const rangeStart = parse(candidateStart, 'HH:mm', selectedDate);
         const rangeEnd = parse(candidateEnd, 'HH:mm', selectedDate);
         if (!isRangeBlocked(rangeStart, rangeEnd)) {
@@ -221,7 +222,7 @@ function ReservationStatusDialog({
       const idx = TIME_SLOTS.indexOf(slot);
       if (idx < 0) return;
       let candidateEnd =
-        slot >= endTime ? TIME_SLOTS[Math.min(idx + 2, TIME_SLOTS.length - 1)] : endTime;
+        slot >= endTime ? TIME_SLOTS[Math.min(idx + 1, TIME_SLOTS.length - 1)] : endTime;
       const rangeStart = parse(slot, 'HH:mm', selectedDate);
       const rangeEnd = parse(candidateEnd, 'HH:mm', selectedDate);
       if (rangeEnd <= rangeStart || isRangeBlocked(rangeStart, rangeEnd)) {
@@ -259,7 +260,7 @@ function ReservationStatusDialog({
         const idx = TIME_SLOTS.indexOf(slot);
         if (idx < 0) return;
         let candidateEnd =
-          slot >= endTime ? TIME_SLOTS[Math.min(idx + 2, TIME_SLOTS.length - 1)] : endTime;
+          slot >= endTime ? TIME_SLOTS[Math.min(idx + 1, TIME_SLOTS.length - 1)] : endTime;
         const rangeStart = parse(slot, 'HH:mm', selectedDate);
         let found = false;
         for (let endIdx = idx + 1; endIdx < TIME_SLOTS.length; endIdx += 1) {
@@ -396,7 +397,7 @@ function ReservationStatusDialog({
                   const isStart = startTime === slot;
                   const isEnd = endTime === slot;
                   const isInRange = slot > startTime && slot < endTime;
-                  const isDisabled = !isSelectingEnd && blockedStartSlots.has(slot);
+                  const isDisabled = !isSelectingEnd && blockedStartSlots.has(slot) && !isEnd;
 
                   return (
                     <button
@@ -540,7 +541,10 @@ function ReservationStatusDialog({
               </div>
             </div>
 
-            <div className="status-card-footer" style={{ flexWrap: 'wrap' }}>
+            <div
+              className="status-card-footer reservation-card-footer"
+              style={{ flexWrap: 'wrap' }}
+            >
               <button
                 className="nav-menu-item"
                 style={{ whiteSpace: 'nowrap' }}
@@ -552,8 +556,8 @@ function ReservationStatusDialog({
                 className="linear-primary-button"
                 style={{
                   width: 'auto',
-                  minWidth: '96px',
-                  padding: '0 24px',
+                  minWidth: '88px',
+                  padding: '0 18px',
                   marginTop: 0,
                   whiteSpace: 'nowrap',
                 }}
@@ -631,31 +635,22 @@ function ReservationStatusDialog({
         </div>
         <div className="status-info-group">
           <span className="status-info-label">주요 안건</span>
-          <p className="status-info-value">{reservation.agenda || '작성된 안건이 없습니다.'}</p>
-          <button
-            type="button"
-            onClick={() => {
-              onClose();
-              navigate(`/minutes/${reservation.id}`);
-            }}
-            style={{
-              marginTop: '6px',
-              alignSelf: 'flex-start',
-              border: 'none',
-              background: 'transparent',
-              color: '#6b563e',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              padding: 0,
-            }}
-          >
-            [회의록 보기]
-          </button>
+          <p className="status-info-value" style={{ whiteSpace: 'pre-wrap' }}>
+            {formatAgendaMultiline(reservation.agenda) || '작성된 안건이 없습니다.'}
+          </p>
         </div>
       </div>
 
-      <div className="status-card-footer">
+      <div className="status-card-footer reservation-card-footer">
+        <button
+          className="nav-menu-item"
+          onClick={() => {
+            onClose();
+            navigate(`/minutes/${reservation.id}`);
+          }}
+        >
+          회의록 보기
+        </button>
         <button className="nav-menu-item" onClick={() => setIsEditing(true)}>
           예약 수정
         </button>
@@ -671,7 +666,7 @@ function ReservationStatusDialog({
         </button>
         <button
           className="linear-primary-button"
-          style={{ width: 'auto', padding: '0 24px' }}
+          style={{ width: 'auto', minWidth: '72px', padding: '0 18px' }}
           onClick={onClose}
         >
           닫기

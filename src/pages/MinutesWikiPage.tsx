@@ -3,6 +3,35 @@ import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../stores';
 
+const INTERNAL_ATTENDEE_DISPLAY_LIMIT = 20;
+
+function formatInternalAttendees(attendees: Array<{ name: string }>) {
+  if (attendees.length === 0) return '없음';
+
+  const names = attendees.map((attendee) => attendee.name.trim()).filter((name) => name.length > 0);
+
+  if (names.length === 0) return '없음';
+
+  const fullDisplay = names.join(', ');
+  if (fullDisplay.length <= INTERNAL_ATTENDEE_DISPLAY_LIMIT) {
+    return fullDisplay;
+  }
+
+  let visibleNames = '';
+  for (let index = 0; index < names.length; index += 1) {
+    const candidate = visibleNames.length > 0 ? `${visibleNames}, ${names[index]}` : names[index];
+    if (candidate.length > INTERNAL_ATTENDEE_DISPLAY_LIMIT) {
+      const hiddenCount = names.length - index;
+      return visibleNames.length > 0
+        ? `${visibleNames} +${hiddenCount}`
+        : `${names[0]} +${hiddenCount - 1}`;
+    }
+    visibleNames = candidate;
+  }
+
+  return visibleNames;
+}
+
 function MinutesWikiPage() {
   const navigate = useNavigate();
   const { reservations, reservationLabels } = useAppState();
@@ -172,12 +201,7 @@ function MinutesWikiPage() {
           </div>
 
           {filteredReservations.map((reservation) => {
-            const internalAttendeeDisplay =
-              reservation.attendees.length === 0
-                ? '없음'
-                : reservation.attendees.length === 1
-                  ? reservation.attendees[0].name
-                  : `${reservation.attendees[0].name} +${reservation.attendees.length - 1}`;
+            const internalAttendeeDisplay = formatInternalAttendees(reservation.attendees);
             return (
               <div
                 key={reservation.id}
@@ -220,6 +244,8 @@ function MinutesWikiPage() {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     width: '100%',
+                    justifySelf: 'stretch',
+                    textAlign: 'left',
                   }}
                   title={
                     reservation.attendees.map((attendee) => attendee.name).join(', ') || '없음'
