@@ -11,7 +11,6 @@ from app.core.settings import (
     SESSION_COOKIE_SECURE,
 )
 from app.infra.db import get_db_session
-from app.service.admin_service import ensure_admin_user
 from app.service.auth_service import (
     AuthUser,
     authenticate_user,
@@ -64,7 +63,6 @@ async def login(
     db: AsyncSession = Depends(get_db_session),
 ) -> AuthResponse | JSONResponse:
     # 이메일/비밀번호를 검증하고 성공 시 1년 만료 세션 쿠키를 발급한다.
-    await ensure_admin_user(db)
     user = await authenticate_user(payload.email, payload.password, db)
     if user is None:
         return _unauthorized_response("이메일 또는 비밀번호가 올바르지 않습니다.")
