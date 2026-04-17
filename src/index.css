@@ -208,8 +208,8 @@ button { cursor: pointer; border: none; background: transparent; }
   max-width: 480px !important; width: 100% !important;
   max-height: calc(100vh - 48px) !important;
   padding: 0 !important; overflow-y: auto;
-  border: 1px solid var(--border) !important; border-radius: 16px !important;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.15) !important; background: #ffffff !important;
+  border: 1px solid rgba(16, 18, 24, 0.08) !important; border-radius: 18px !important;
+  box-shadow: 0 28px 70px rgba(15, 23, 42, 0.14) !important; background: #ffffff !important;
 }
 
 .reservation-dialog-card {
@@ -497,8 +497,35 @@ button { cursor: pointer; border: none; background: transparent; }
 .status-info-label { font-size: 11px; font-weight: 700; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.06em; margin: 0; }
 .status-info-value { font-size: 14px; color: var(--text); line-height: 1.6; font-weight: 500; margin: 0; width: 100%; }
 
-.status-card-footer { padding: 24px 32px; background: #fafafb; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 12px; }
+.status-card-footer { padding: 24px 32px; background: linear-gradient(180deg, rgba(255,255,255,0.2), #f7f8fa 18%); border-top: 1px solid rgba(16, 18, 24, 0.06); display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
+.reservation-card-footer { padding: 14px 20px; gap: 8px; background: linear-gradient(180deg, rgba(255,255,255,0), #f8fafc 20%); }
+.reservation-card-footer .nav-menu-item,
+.reservation-card-footer .linear-primary-button { height: 32px; font-size: 12px; border-radius: 8px; box-sizing: border-box; }
+.reservation-card-footer .nav-menu-item {
+  padding: 0 12px;
+  border: 1px solid rgba(16, 18, 24, 0.08);
+  background: #ffffff;
+  color: var(--text);
+}
+.reservation-card-footer .nav-menu-item:hover {
+  background: #f8fafc;
+  border-color: rgba(16, 18, 24, 0.14);
+}
+.reservation-card-footer .linear-primary-button {
+  padding: 0 14px;
+  border: 1px solid #101218;
+}
 .status-badge { display: inline-flex; align-items: center; padding: 4px 10px; background: rgba(94, 106, 210, 0.06); color: var(--accent); border-radius: 6px; font-size: 12px; font-weight: 600; }
+.minutes-section-title {
+  margin-bottom: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(16, 18, 24, 0.08);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
 
 /* Auth & Form UI */
 .login-trigger {

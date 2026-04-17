@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppIcon } from '../components';
 import { useAppState } from '../stores';
+import { formatAgendaInline } from '../utils/minutesText';
 
 function MyMeetingsPage() {
   const navigate = useNavigate();
@@ -78,7 +79,7 @@ function MyMeetingsPage() {
               <p className="meeting-meta">
                 참석자: {meeting.attendees.map((attendee) => attendee.name).join(', ') || '없음'}
               </p>
-              <p className="meeting-meta">안건: {meeting.agenda || '없음'}</p>
+              <p className="meeting-meta">안건: {formatAgendaInline(meeting.agenda) || '없음'}</p>
             </article>
           ))}
         </section>
