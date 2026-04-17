@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format, parse, startOfDay } from 'date-fns';
 import { DayPicker } from 'react-day-picker';
 import { ko } from 'date-fns/locale';
 import type { AppUser } from '../stores';
+import {
+  TIME_SLOTS,
+  filterReservationUsers,
+  useAgendaBulletKeyDown,
+  useReservationTimeSelection,
+} from './reservationDialogUtils';
 import Dialog from './ui/Dialog';
 
 type ReservationDraft = {
@@ -29,24 +35,6 @@ type ReservationDialogProps = {
   onClose: () => void;
   onConfirm: (draft: ReservationDraft) => Promise<void> | void;
 };
-
-const TIME_SLOTS = (() => {
-  const slots = [];
-  for (let h = 9; h <= 18; h++) {
-    slots.push(`${h.toString().padStart(2, '0')}:00`);
-    if (h < 18) slots.push(`${h.toString().padStart(2, '0')}:30`);
-  }
-  return slots;
-})();
-
-const MAX_BULLET_LEVEL = 4;
-const BULLET_SYMBOLS = ['•', '◦', '▪', '▫'] as const;
-const BULLET_PATTERN = /^(\t{0,3})([•◦▪▫])\s?(.*)$/;
-
-function getBulletPrefix(level: number) {
-  const normalized = Math.max(0, Math.min(level, BULLET_SYMBOLS.length - 1));
-  return `${BULLET_SYMBOLS[normalized]} `;
-}
 
 function ReservationDialog({
   isOpen,
@@ -90,65 +78,26 @@ function ReservationDialog({
     }
   }, [isOpen, currentUser, initialStart, initialEnd, labelOptions]);
 
-  const filteredUsers = useMemo(() => {
-    const keyword = attendeeQuery.trim().toLowerCase();
-    if (!keyword) return [];
-
-    const candidates = users.filter(
-      (user) => !selectedAttendees.some((attendee) => attendee.id === user.id)
-    );
-
-    const startsWithName = candidates.filter((user) => user.name.toLowerCase().startsWith(keyword));
-    const includesName = candidates.filter(
-      (user) =>
-        !user.name.toLowerCase().startsWith(keyword) && user.name.toLowerCase().includes(keyword)
-    );
-    const includesEmail = candidates.filter(
-      (user) =>
-        !user.name.toLowerCase().includes(keyword) && user.email.toLowerCase().includes(keyword)
-    );
-
-    return [...startsWithName, ...includesName, ...includesEmail].slice(0, 6);
-  }, [attendeeQuery, selectedAttendees, users]);
+  const filteredUsers = useMemo(
+    () => filterReservationUsers(attendeeQuery, selectedAttendees, users),
+    [attendeeQuery, selectedAttendees, users]
+  );
 
   const isRangeBlocked = useCallback(
     (start: Date, end: Date) => occupiedRanges.some((item) => start < item.end && item.start < end),
     [occupiedRanges]
   );
 
-  const blockedStartSlots = useMemo(() => {
-    if (!selectedDate) return new Set<string>();
-    const locked = new Set<string>();
-    for (let i = 0; i < TIME_SLOTS.length - 1; i += 1) {
-      const segmentStart = parse(TIME_SLOTS[i], 'HH:mm', selectedDate);
-      const segmentEnd = parse(TIME_SLOTS[i + 1], 'HH:mm', selectedDate);
-      if (isRangeBlocked(segmentStart, segmentEnd)) {
-        locked.add(TIME_SLOTS[i]);
-      }
-    }
-    return locked;
-  }, [isRangeBlocked, selectedDate]);
-
-  useEffect(() => {
-    if (!selectedDate) return;
-    const start = parse(startTime, 'HH:mm', selectedDate);
-    const end = parse(endTime, 'HH:mm', selectedDate);
-    if (end <= start || isRangeBlocked(start, end) || blockedStartSlots.has(startTime)) {
-      for (let i = 0; i < TIME_SLOTS.length - 1; i += 1) {
-        const candidateStart = TIME_SLOTS[i];
-        if (blockedStartSlots.has(candidateStart)) continue;
-        const candidateEnd = TIME_SLOTS[i + 1];
-        const rangeStart = parse(candidateStart, 'HH:mm', selectedDate);
-        const rangeEnd = parse(candidateEnd, 'HH:mm', selectedDate);
-        if (!isRangeBlocked(rangeStart, rangeEnd)) {
-          setStartTime(candidateStart);
-          setEndTime(candidateEnd);
-          setIsSelectingEnd(false);
-          return;
-        }
-      }
-    }
-  }, [blockedStartSlots, endTime, isRangeBlocked, selectedDate, startTime]);
+  const { blockedStartSlots, handleTimeClick } = useReservationTimeSelection({
+    selectedDate,
+    startTime,
+    endTime,
+    isSelectingEnd,
+    isRangeBlocked,
+    setStartTime,
+    setEndTime,
+    setIsSelectingEnd,
+  });
 
   const handleConfirm = async () => {
     if (!title.trim() || !selectedDate) return;
@@ -178,171 +127,7 @@ function ReservationDialog({
     });
   };
 
-  const handleTimeClick = (slot: string) => {
-    if (!selectedDate) return;
-    const lastSlot = TIME_SLOTS[TIME_SLOTS.length - 1];
-
-    if (!isSelectingEnd) {
-      if (slot === lastSlot) {
-        const currentStart = parse(startTime, 'HH:mm', selectedDate);
-        const candidateEnd = parse(lastSlot, 'HH:mm', selectedDate);
-        if (candidateEnd > currentStart && !isRangeBlocked(currentStart, candidateEnd)) {
-          setEndTime(lastSlot);
-          setIsSelectingEnd(false);
-        }
-        return;
-      }
-      if (blockedStartSlots.has(slot)) return;
-      // Start a new selection or update start point
-      const idx = TIME_SLOTS.indexOf(slot);
-      if (idx < 0) return;
-      let candidateEnd =
-        slot >= endTime ? TIME_SLOTS[Math.min(idx + 1, TIME_SLOTS.length - 1)] : endTime;
-      const rangeStart = parse(slot, 'HH:mm', selectedDate);
-      const rangeEnd = parse(candidateEnd, 'HH:mm', selectedDate);
-      if (rangeEnd <= rangeStart || isRangeBlocked(rangeStart, rangeEnd)) {
-        let found = false;
-        for (let endIdx = idx + 1; endIdx < TIME_SLOTS.length; endIdx += 1) {
-          const testEnd = TIME_SLOTS[endIdx];
-          const testEndDate = parse(testEnd, 'HH:mm', selectedDate);
-          if (testEndDate <= rangeStart) continue;
-          if (!isRangeBlocked(rangeStart, testEndDate)) {
-            candidateEnd = testEnd;
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          alert('선택한 시작 시간 이후에 비어있는 구간이 없습니다.');
-          return;
-        }
-      }
-      setStartTime(slot);
-      setEndTime(candidateEnd);
-      setIsSelectingEnd(true);
-    } else {
-      // Finish range selection
-      if (slot > startTime) {
-        const nextStart = parse(startTime, 'HH:mm', selectedDate);
-        const nextEnd = parse(slot, 'HH:mm', selectedDate);
-        if (isRangeBlocked(nextStart, nextEnd)) {
-          alert('이미 예약된 시간대를 포함할 수 없습니다.');
-          return;
-        }
-        setEndTime(slot);
-        setIsSelectingEnd(false);
-      } else {
-        if (blockedStartSlots.has(slot)) return;
-        // Clicked before current start, treat as setting a new start
-        const idx = TIME_SLOTS.indexOf(slot);
-        if (idx < 0) return;
-        let candidateEnd =
-          slot >= endTime ? TIME_SLOTS[Math.min(idx + 1, TIME_SLOTS.length - 1)] : endTime;
-        const rangeStart = parse(slot, 'HH:mm', selectedDate);
-        let found = false;
-        for (let endIdx = idx + 1; endIdx < TIME_SLOTS.length; endIdx += 1) {
-          const testEnd = TIME_SLOTS[endIdx];
-          const testEndDate = parse(testEnd, 'HH:mm', selectedDate);
-          if (testEndDate <= rangeStart) continue;
-          if (!isRangeBlocked(rangeStart, testEndDate)) {
-            candidateEnd = testEnd;
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          alert('선택한 시작 시간 이후에 비어있는 구간이 없습니다.');
-          return;
-        }
-        setStartTime(slot);
-        setEndTime(candidateEnd);
-        setIsSelectingEnd(true);
-      }
-    }
-  };
-
-  const handleAgendaKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
-    const textarea = event.currentTarget;
-    const value = textarea.value;
-    const selectionStart = textarea.selectionStart;
-    const selectionEnd = textarea.selectionEnd;
-
-    const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
-    const nextLineBreakIndex = value.indexOf('\n', selectionStart);
-    const lineEnd = nextLineBreakIndex === -1 ? value.length : nextLineBreakIndex;
-    const line = value.slice(lineStart, lineEnd);
-    const lineBeforeCursor = value.slice(lineStart, selectionStart);
-
-    const setAgendaWithCursor = (nextValue: string, cursor: number) => {
-      setAgenda(nextValue);
-      requestAnimationFrame(() => {
-        textarea.focus();
-        textarea.setSelectionRange(cursor, cursor);
-      });
-    };
-
-    if (event.key === '-') {
-      if (selectionStart !== selectionEnd) return;
-      if (!/^\t*$/.test(lineBeforeCursor)) return;
-      event.preventDefault();
-      const bullet = getBulletPrefix(Math.min(lineBeforeCursor.length, MAX_BULLET_LEVEL - 1));
-      const nextValue = `${value.slice(0, selectionStart)}${bullet}${value.slice(selectionEnd)}`;
-      setAgendaWithCursor(nextValue, selectionStart + bullet.length);
-      return;
-    }
-
-    if (event.key === 'Enter') {
-      const bulletMatch = line.match(BULLET_PATTERN);
-      if (!bulletMatch) return;
-      event.preventDefault();
-      const indent = bulletMatch[1] ?? '';
-      const insert = `\n${indent}${getBulletPrefix(indent.length)}`;
-      const nextValue = `${value.slice(0, selectionStart)}${insert}${value.slice(selectionEnd)}`;
-      setAgendaWithCursor(nextValue, selectionStart + insert.length);
-      return;
-    }
-
-    if (event.key !== 'Tab') return;
-    event.preventDefault();
-
-    if (event.shiftKey) {
-      const indentMatch = line.match(/^(\t{1,3})([•◦▪▫])\s?(.*)$/);
-      if (indentMatch) {
-        const nextIndent = indentMatch[1].slice(0, -1);
-        const nextLine = `${nextIndent}${getBulletPrefix(nextIndent.length)}${indentMatch[3]}`;
-        const nextValue = `${value.slice(0, lineStart)}${nextLine}${value.slice(lineEnd)}`;
-        setAgendaWithCursor(nextValue, Math.max(lineStart, selectionStart - 1));
-        return;
-      }
-
-      const bulletMatch = line.match(/^([•◦▪▫])\s?(.*)$/);
-      if (bulletMatch) {
-        const nextLine = bulletMatch[2];
-        const nextValue = `${value.slice(0, lineStart)}${nextLine}${value.slice(lineEnd)}`;
-        setAgendaWithCursor(nextValue, Math.max(lineStart, selectionStart - 2));
-      }
-      return;
-    }
-
-    const nestedMatch = line.match(BULLET_PATTERN);
-    if (nestedMatch) {
-      const nextIndent = `${nestedMatch[1]}\t`;
-      if (nextIndent.length >= MAX_BULLET_LEVEL) return;
-      const nextLine = `${nextIndent}${getBulletPrefix(nextIndent.length)}${nestedMatch[3]}`;
-      const nextValue = `${value.slice(0, lineStart)}${nextLine}${value.slice(lineEnd)}`;
-      setAgendaWithCursor(nextValue, selectionStart + 1);
-      return;
-    }
-
-    const plainLineMatch = line.match(/^(\t{0,4})(.*)$/);
-    if (plainLineMatch) {
-      const indent = plainLineMatch[1].slice(0, MAX_BULLET_LEVEL - 1);
-      const bullet = getBulletPrefix(indent.length);
-      const nextLine = `${indent}${bullet}${plainLineMatch[2]}`;
-      const nextValue = `${value.slice(0, lineStart)}${nextLine}${value.slice(lineEnd)}`;
-      setAgendaWithCursor(nextValue, selectionStart + bullet.length);
-    }
-  }, []);
+  const handleAgendaKeyDown = useAgendaBulletKeyDown(setAgenda);
 
   return (
     <Dialog
