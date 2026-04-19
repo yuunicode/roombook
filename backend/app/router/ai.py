@@ -40,6 +40,7 @@ class TranscribeChunkResponse(BaseModel):
     text: str
     used_usd: float
     remaining_usd: float
+    user_used_usd: float
 
 
 class SuggestMinutesRequest(BaseModel):
@@ -55,6 +56,7 @@ class SuggestMinutesResponse(BaseModel):
     meeting_result: list[str]
     used_usd: float
     remaining_usd: float
+    user_used_usd: float
 
 
 @router.post(
@@ -84,10 +86,13 @@ async def transcribe_chunk_api(
     if isinstance(result, DomainError):
         return _error_response(_error_status(result.code), result.code, result.message)
     applied = await apply_ai_usage_cost(auth_user.id, result.usd_cost, db)
+    if isinstance(applied, DomainError):
+        return _error_response(_error_status(applied.code), applied.code, applied.message)
     return TranscribeChunkResponse(
         text=result.text,
-        used_usd=float(applied.used_usd),
-        remaining_usd=float(applied.remaining_usd),
+        used_usd=float(applied.global_used_usd),
+        remaining_usd=float(applied.global_remaining_usd),
+        user_used_usd=float(applied.user_used_usd),
     )
 
 
@@ -134,6 +139,8 @@ async def suggest_minutes_api(
         )
         return _error_response(_error_status(result.code), result.code, result.message)
     applied = await apply_ai_usage_cost(auth_user.id, result.usd_cost, db)
+    if isinstance(applied, DomainError):
+        return _error_response(_error_status(applied.code), applied.code, applied.message)
     logger.info(
         (
             "suggest-minutes completed user_id=%s transcript_length=%s elapsed_ms=%s "
@@ -151,8 +158,9 @@ async def suggest_minutes_api(
         agenda=result.agenda,
         meeting_content=result.meeting_content,
         meeting_result=result.meeting_result,
-        used_usd=float(applied.used_usd),
-        remaining_usd=float(applied.remaining_usd),
+        used_usd=float(applied.global_used_usd),
+        remaining_usd=float(applied.global_remaining_usd),
+        user_used_usd=float(applied.user_used_usd),
     )
 
 

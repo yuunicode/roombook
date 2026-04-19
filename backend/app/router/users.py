@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import SESSION_COOKIE_NAME
 from app.infra.db import get_db_session
+from app.service.ai_quota_service import list_ai_usage_summaries_by_admin
 from app.service.auth_service import AuthUser, get_user_from_session_token
 from app.service.domain import DomainError
 from app.service.user_service import (
@@ -55,6 +56,28 @@ class CreateUserResponse(BaseModel):
     email: str
     department: str
     is_admin: bool
+
+
+class UserAiUsageResponse(BaseModel):
+    user_id: str
+    name: str
+    email: str
+    department: str
+    used_usd: float
+    period_month: str
+    updated_at: str | None
+
+
+class GlobalAiUsageSummaryResponse(BaseModel):
+    monthly_limit_usd: float
+    used_usd: float
+    remaining_usd: float
+    period_month: str
+
+
+class UserAiUsageOverviewResponse(BaseModel):
+    summary: GlobalAiUsageSummaryResponse
+    items: list[UserAiUsageResponse]
 
 
 class SetAdminRequest(BaseModel):
@@ -123,6 +146,45 @@ async def search_users(
         return _error_response(status.HTTP_400_BAD_REQUEST, result.code, result.message)
 
     return [UserSearchItem(id=item.id, name=item.name, email=item.email) for item in result]
+
+
+@router.get(
+    "/ai-usage",
+    response_model=UserAiUsageOverviewResponse,
+    responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}},
+)
+async def get_user_ai_usage(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> UserAiUsageOverviewResponse | JSONResponse:
+    auth_user = await _require_auth_user(request, db)
+    if auth_user is None:
+        return _unauthorized_response()
+
+    result = await list_ai_usage_summaries_by_admin(auth_user, db)
+    if isinstance(result, DomainError):
+        return _error_response(_domain_error_to_status(result.code), result.code, result.message)
+
+    return UserAiUsageOverviewResponse(
+        summary=GlobalAiUsageSummaryResponse(
+            monthly_limit_usd=float(result.summary.monthly_limit_usd),
+            used_usd=float(result.summary.used_usd),
+            remaining_usd=float(result.summary.remaining_usd),
+            period_month=result.summary.period_month,
+        ),
+        items=[
+            UserAiUsageResponse(
+                user_id=item.user_id,
+                name=item.name,
+                email=item.email,
+                department=item.department,
+                used_usd=float(item.used_usd),
+                period_month=item.period_month,
+                updated_at=item.updated_at.isoformat() if item.updated_at is not None else None,
+            )
+            for item in result.items
+        ],
+    )
 
 
 @router.post(

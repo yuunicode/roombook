@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.infra import (  # noqa: F401
+    global_ai_quota,
     minutes_lock,
     reservation,
     reservation_attendee,
@@ -14,6 +15,7 @@ from app.infra import (  # noqa: F401
     room,
     timetable,
     user,
+    user_ai_quota,
 )
 from app.infra.db import Base, get_db_session
 from app.infra.reservation_label import ReservationLabel

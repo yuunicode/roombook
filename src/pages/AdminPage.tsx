@@ -1,8 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { listUserAiUsage, type UserAiUsageDto, type UserAiUsageOverviewDto } from '../api';
 import { useAppState } from '../stores';
 
 const DEPARTMENT_OPTIONS = ['컨설팅', 'R&D센터', '사업본부'] as const;
+
+function formatUsd(value: number) {
+  return `$ ${value.toFixed(4)}`;
+}
 
 function AdminPage() {
   const navigate = useNavigate();
@@ -27,6 +32,13 @@ function AdminPage() {
   const [adminSearchQuery, setAdminSearchQuery] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [labelRename, setLabelRename] = useState<Record<string, string>>({});
+  const [aiUsageRows, setAiUsageRows] = useState<UserAiUsageDto[]>([]);
+  const [aiUsageSummary, setAiUsageSummary] = useState<UserAiUsageOverviewDto['summary'] | null>(
+    null
+  );
+  const [aiUsageSearchQuery, setAiUsageSearchQuery] = useState('');
+  const [isAiUsageLoading, setIsAiUsageLoading] = useState(false);
+  const [aiUsageError, setAiUsageError] = useState('');
 
   const sortedUsers = useMemo(
     () => [...users].sort((a, b) => a.name.localeCompare(b.name)),
@@ -46,6 +58,44 @@ function AdminPage() {
       )
       .slice(0, 8);
   }, [adminSearchQuery, sortedUsers]);
+  const filteredAiUsageRows = useMemo(() => {
+    const keyword = aiUsageSearchQuery.trim().toLowerCase();
+    if (!keyword) return aiUsageRows;
+    return aiUsageRows.filter(
+      (row) =>
+        row.user_id.toLowerCase().includes(keyword) ||
+        row.name.toLowerCase().includes(keyword) ||
+        row.email.toLowerCase().includes(keyword)
+    );
+  }, [aiUsageRows, aiUsageSearchQuery]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !isCurrentUserAdmin) return;
+
+    let cancelled = false;
+    const loadAiUsage = async () => {
+      setIsAiUsageLoading(true);
+      setAiUsageError('');
+      try {
+        const overview = await listUserAiUsage();
+        if (cancelled) return;
+        setAiUsageSummary(overview.summary);
+        setAiUsageRows(overview.items);
+      } catch (error) {
+        if (cancelled) return;
+        setAiUsageError(error instanceof Error ? error.message : 'AI 사용량 조회 실패');
+      } finally {
+        if (!cancelled) {
+          setIsAiUsageLoading(false);
+        }
+      }
+    };
+
+    void loadAiUsage();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, isCurrentUserAdmin]);
 
   if (!isLoggedIn || !isCurrentUserAdmin) {
     return (
@@ -235,6 +285,161 @@ function AdminPage() {
                 </button>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div
+          style={{
+            background: '#fff',
+            border: '1px solid var(--border)',
+            borderRadius: '12px',
+            padding: '14px',
+            minHeight: '360px',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px',
+              marginBottom: '10px',
+            }}
+          >
+            <div>
+              <h3 style={{ margin: '0 0 4px', fontSize: '14px' }}>AI 사용량 조회</h3>
+              <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-soft)' }}>
+                전사 총 한도로 차단하고, 사용자별 누적 사용 금액을 함께 기록합니다.
+              </p>
+            </div>
+            <button
+              className="nav-menu-item"
+              style={{ height: '32px', flexShrink: 0 }}
+              onClick={async () => {
+                setIsAiUsageLoading(true);
+                setAiUsageError('');
+                try {
+                  const overview = await listUserAiUsage();
+                  setAiUsageSummary(overview.summary);
+                  setAiUsageRows(overview.items);
+                } catch (error) {
+                  setAiUsageError(error instanceof Error ? error.message : 'AI 사용량 조회 실패');
+                } finally {
+                  setIsAiUsageLoading(false);
+                }
+              }}
+            >
+              새로고침
+            </button>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 280px) auto',
+              gap: '8px',
+              marginBottom: '12px',
+            }}
+          >
+            <input
+              className="linear-input"
+              placeholder="ID / 이름 / 이메일 검색"
+              value={aiUsageSearchQuery}
+              onChange={(event) => setAiUsageSearchQuery(event.target.value)}
+            />
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '16px',
+                fontSize: '12px',
+                color: 'var(--text-soft)',
+                paddingRight: '4px',
+              }}
+            >
+              <span>기준 월: {aiUsageSummary?.period_month ?? '-'}</span>
+              <span>
+                전사 한도: {aiUsageSummary ? formatUsd(aiUsageSummary.monthly_limit_usd) : '-'}
+              </span>
+              <span>사용: {aiUsageSummary ? formatUsd(aiUsageSummary.used_usd) : '-'}</span>
+              <span>잔여: {aiUsageSummary ? formatUsd(aiUsageSummary.remaining_usd) : '-'}</span>
+            </div>
+          </div>
+
+          <div
+            style={{
+              flex: 1,
+              overflow: 'auto',
+              border: '1px solid var(--border)',
+              borderRadius: '8px',
+            }}
+          >
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '90px 110px 1fr 90px 120px 150px',
+                gap: '8px',
+                padding: '8px 10px',
+                background: '#fafafb',
+                borderBottom: '1px solid var(--border)',
+                fontSize: '12px',
+                fontWeight: 700,
+                textAlign: 'center',
+              }}
+            >
+              <span>ID</span>
+              <span>이름</span>
+              <span>이메일</span>
+              <span>부서</span>
+              <span>사용 금액</span>
+              <span>최근 반영</span>
+            </div>
+
+            {isAiUsageLoading ? (
+              <p
+                style={{ margin: 0, padding: '14px', fontSize: '12px', color: 'var(--text-soft)' }}
+              >
+                불러오는 중...
+              </p>
+            ) : aiUsageError ? (
+              <p style={{ margin: 0, padding: '14px', fontSize: '12px', color: '#e5484d' }}>
+                {aiUsageError}
+              </p>
+            ) : filteredAiUsageRows.length === 0 ? (
+              <p
+                style={{ margin: 0, padding: '14px', fontSize: '12px', color: 'var(--text-soft)' }}
+              >
+                표시할 사용량 데이터가 없습니다.
+              </p>
+            ) : (
+              filteredAiUsageRows.map((row) => (
+                <div
+                  key={row.user_id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '90px 110px 1fr 90px 120px 150px',
+                    gap: '8px',
+                    padding: '8px 10px',
+                    borderBottom: '1px solid var(--border)',
+                    alignItems: 'center',
+                    fontSize: '12px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <span>{row.user_id}</span>
+                  <span>{row.name}</span>
+                  <span style={{ textAlign: 'left' }}>{row.email}</span>
+                  <span>{row.department}</span>
+                  <span>{formatUsd(row.used_usd)}</span>
+                  <span>
+                    {row.updated_at ? row.updated_at.slice(0, 16).replace('T', ' ') : '-'}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

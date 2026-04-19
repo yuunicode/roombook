@@ -13,6 +13,26 @@ export type UserDto = {
   is_admin?: boolean;
 };
 
+export type UserAiUsageDto = {
+  user_id: string;
+  name: string;
+  email: string;
+  department: string;
+  used_usd: number;
+  period_month: string;
+  updated_at: string | null;
+};
+
+export type UserAiUsageOverviewDto = {
+  summary: {
+    monthly_limit_usd: number;
+    used_usd: number;
+    remaining_usd: number;
+    period_month: string;
+  };
+  items: UserAiUsageDto[];
+};
+
 export type RoomDto = {
   id: string;
   name: string;
@@ -187,6 +207,12 @@ export async function createCompanyUser(payload: CreateUserPayload): Promise<Use
 
 export async function listCompanyUsers(): Promise<UserDto[]> {
   return requestJson<UserDto[]>('/users', {
+    method: 'GET',
+  });
+}
+
+export async function listUserAiUsage(): Promise<UserAiUsageOverviewDto> {
+  return requestJson<UserAiUsageOverviewDto>('/users/ai-usage', {
     method: 'GET',
   });
 }
