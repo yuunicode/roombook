@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../stores';
 
-const INTERNAL_ATTENDEE_DISPLAY_LIMIT = 20;
+const INTERNAL_ATTENDEE_VISIBLE_COUNT = 2;
 
 function formatInternalAttendees(attendees: Array<{ name: string }>) {
   if (attendees.length === 0) return '없음';
@@ -11,25 +11,11 @@ function formatInternalAttendees(attendees: Array<{ name: string }>) {
   const names = attendees.map((attendee) => attendee.name.trim()).filter((name) => name.length > 0);
 
   if (names.length === 0) return '없음';
+  if (names.length <= INTERNAL_ATTENDEE_VISIBLE_COUNT) return names.join(', ');
 
-  const fullDisplay = names.join(', ');
-  if (fullDisplay.length <= INTERNAL_ATTENDEE_DISPLAY_LIMIT) {
-    return fullDisplay;
-  }
-
-  let visibleNames = '';
-  for (let index = 0; index < names.length; index += 1) {
-    const candidate = visibleNames.length > 0 ? `${visibleNames}, ${names[index]}` : names[index];
-    if (candidate.length > INTERNAL_ATTENDEE_DISPLAY_LIMIT) {
-      const hiddenCount = names.length - index;
-      return visibleNames.length > 0
-        ? `${visibleNames} +${hiddenCount}`
-        : `${names[0]} +${hiddenCount - 1}`;
-    }
-    visibleNames = candidate;
-  }
-
-  return visibleNames;
+  return `${names.slice(0, INTERNAL_ATTENDEE_VISIBLE_COUNT).join(', ')} +${
+    names.length - INTERNAL_ATTENDEE_VISIBLE_COUNT
+  }`;
 }
 
 function MinutesWikiPage() {
@@ -182,8 +168,7 @@ function MinutesWikiPage() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns:
-                '170px 84px minmax(220px, 1.2fr) minmax(260px, 1.5fr) 130px 56px',
+              gridTemplateColumns: '170px 84px minmax(320px, 1.8fr) minmax(180px, 1fr) 130px 56px',
               gap: '10px',
               padding: '12px 14px',
               borderBottom: '1px solid var(--border)',
@@ -208,7 +193,7 @@ function MinutesWikiPage() {
                 style={{
                   display: 'grid',
                   gridTemplateColumns:
-                    '170px 84px minmax(220px, 1.2fr) minmax(260px, 1.5fr) 130px 56px',
+                    '170px 84px minmax(320px, 1.8fr) minmax(180px, 1fr) 130px 56px',
                   gap: '10px',
                   padding: '12px 14px',
                   borderBottom: '1px solid var(--border)',
