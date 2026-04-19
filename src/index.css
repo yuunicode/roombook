@@ -191,6 +191,149 @@ button { cursor: pointer; border: none; background: transparent; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.monthly-calendar {
+  display: flex;
+  flex-direction: column;
+  min-height: 750px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: visible;
+  background: var(--panel);
+}
+.monthly-calendar-header,
+.monthly-calendar-week {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.monthly-calendar-header {
+  border-bottom: 1px solid var(--border);
+}
+.monthly-calendar-header-cell {
+  padding: 12px 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.monthly-calendar-grid {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+.monthly-calendar-week {
+  min-height: 140px;
+  flex: 1;
+}
+.monthly-calendar-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+  text-align: left;
+  vertical-align: top;
+  cursor: pointer;
+}
+.monthly-calendar-week .monthly-calendar-cell:last-child,
+.monthly-calendar-header-cell:last-child {
+  border-right: none;
+}
+.monthly-calendar-week:last-child .monthly-calendar-cell {
+  border-bottom: none;
+}
+.monthly-calendar-cell:hover {
+  background: rgba(16, 18, 24, 0.02);
+}
+.monthly-calendar-cell:focus-visible {
+  outline: 2px solid rgba(94, 106, 210, 0.35);
+  outline-offset: -2px;
+}
+.monthly-calendar-cell.is-outside-month {
+  background: #fafafb;
+  color: var(--text-soft);
+}
+.monthly-calendar-cell.is-today {
+  background: rgba(94, 106, 210, 0.04);
+}
+.monthly-calendar-cell.is-fully-booked {
+  cursor: default;
+}
+.monthly-calendar-cell.is-fully-booked:hover {
+  background: #fff;
+}
+.monthly-calendar-cell.is-fully-booked.is-outside-month:hover {
+  background: #fafafb;
+}
+.monthly-calendar-date-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: inherit;
+}
+.monthly-calendar-events {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+.monthly-calendar-event {
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+.monthly-calendar-overflow {
+  position: relative;
+}
+.monthly-calendar-more-button {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.monthly-calendar-more-button:hover {
+  background: rgba(94, 106, 210, 0.08);
+}
+.monthly-calendar-overflow-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(240px, calc(100vw - 64px));
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 960px) {
+  .monthly-calendar {
+    min-height: auto;
+  }
+  .monthly-calendar-week {
+    min-height: 120px;
+  }
+  .monthly-calendar-cell {
+    padding: 10px;
+  }
+  .monthly-calendar-date-label {
+    font-size: 11px;
+  }
+}
 
 /* ==========================================================
    MODAL & CARD FORMATTING (STABLE & SPACIOUS)
