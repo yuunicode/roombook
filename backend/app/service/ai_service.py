@@ -18,6 +18,7 @@ GPT4O_TRANSCRIPT_INPUT_PER_1M = Decimal("2.5000")
 GPT4O_TRANSCRIPT_OUTPUT_PER_1M = Decimal("10.0000")
 GPT5_NANO_INPUT_PER_1M = Decimal("0.0500")
 GPT5_NANO_OUTPUT_PER_1M = Decimal("0.4000")
+USD_COST_PRECISION = Decimal("0.000001")
 SUPPORTED_AUDIO_FORMATS: dict[str, str] = {
     "mp3": "audio/mpeg",
     "mp4": "audio/mp4",
@@ -201,7 +202,7 @@ def _calc_usd_cost(
 ) -> Decimal:
     per_million = Decimal("1000000")
     usd = (input_tokens / per_million) * input_price + (output_tokens / per_million) * output_price
-    return usd.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    return usd.quantize(USD_COST_PRECISION, rounding=ROUND_HALF_UP)
 
 
 def _require_api_key() -> DomainError | None:

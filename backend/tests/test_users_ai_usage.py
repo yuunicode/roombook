@@ -82,3 +82,44 @@ def test_should_return_global_summary_and_user_usage_for_admin(client: TestClien
     assert user_row["used_usd"] == 0.1234
     assert user_row["period_month"] == period_month
     assert user_row["updated_at"] is not None
+
+
+async def _insert_mismatched_quota_state(period_month: str) -> None:
+    override = app.dependency_overrides[get_db_session]
+    async for session in override():
+        session.add(
+            GlobalAiQuota(
+                quota_key="global",
+                monthly_limit_usd=Decimal("10.0000"),
+                used_usd=Decimal("0.512900"),
+                period_month=period_month,
+            )
+        )
+        session.add(
+            UserAiQuota(
+                user_id="2",
+                monthly_limit_usd=Decimal("0.0000"),
+                used_usd=Decimal("1.059500"),
+                period_month=period_month,
+            )
+        )
+        await session.commit()
+        break
+
+
+def test_should_use_user_usage_sum_when_global_summary_is_stale(client: TestClient) -> None:
+    period_month = datetime.now().strftime("%Y-%m")
+    _login(client, "admin@ecminer.com", "ecminer")
+    asyncio.run(_insert_mismatched_quota_state(period_month))
+
+    response = client.get("/api/users/ai-usage")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["summary"] == {
+        "monthly_limit_usd": 10.0,
+        "used_usd": 1.0595,
+        "remaining_usd": 8.9405,
+        "period_month": period_month,
+    }

@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.user import User
@@ -60,3 +60,10 @@ async def list_user_ai_quotas_with_users(
         .order_by(User.name.asc())
     )
     return list(rows.tuples().all())
+
+
+async def sum_user_ai_usage_by_period(db: AsyncSession, period_month: str) -> Decimal:
+    total = await db.scalar(
+        select(func.coalesce(func.sum(UserAiQuota.used_usd), 0)).where(UserAiQuota.period_month == period_month)
+    )
+    return Decimal(str(total or 0))

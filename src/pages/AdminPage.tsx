@@ -4,9 +4,27 @@ import { listUserAiUsage, type UserAiUsageDto, type UserAiUsageOverviewDto } fro
 import { useAppState } from '../stores';
 
 const DEPARTMENT_OPTIONS = ['컨설팅', 'R&D센터', '사업본부'] as const;
+const AI_USAGE_REFRESH_MS = 10000;
 
-function formatUsd(value: number) {
-  return `$ ${value.toFixed(4)}`;
+function formatUsd(value: number, digits = 4) {
+  return `$ ${value.toFixed(digits)}`;
+}
+
+function formatKstDateTime(value: string | null) {
+  if (!value) return '-';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
 }
 
 function AdminPage() {
@@ -60,8 +78,9 @@ function AdminPage() {
   }, [adminSearchQuery, sortedUsers]);
   const filteredAiUsageRows = useMemo(() => {
     const keyword = aiUsageSearchQuery.trim().toLowerCase();
-    if (!keyword) return aiUsageRows;
-    return aiUsageRows.filter(
+    const visibleRows = aiUsageRows.filter((row) => row.used_usd > 0);
+    if (!keyword) return visibleRows;
+    return visibleRows.filter(
       (row) =>
         row.user_id.toLowerCase().includes(keyword) ||
         row.name.toLowerCase().includes(keyword) ||
@@ -73,8 +92,10 @@ function AdminPage() {
     if (!isLoggedIn || !isCurrentUserAdmin) return;
 
     let cancelled = false;
-    const loadAiUsage = async () => {
-      setIsAiUsageLoading(true);
+    const loadAiUsage = async (showLoading = true) => {
+      if (showLoading) {
+        setIsAiUsageLoading(true);
+      }
       setAiUsageError('');
       try {
         const overview = await listUserAiUsage();
@@ -92,8 +113,18 @@ function AdminPage() {
     };
 
     void loadAiUsage();
+    const intervalId = window.setInterval(() => {
+      void loadAiUsage(false);
+    }, AI_USAGE_REFRESH_MS);
+    const handleFocus = () => {
+      void loadAiUsage(false);
+    };
+    window.addEventListener('focus', handleFocus);
+
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
     };
   }, [isLoggedIn, isCurrentUserAdmin]);
 
@@ -311,7 +342,7 @@ function AdminPage() {
             <div>
               <h3 style={{ margin: '0 0 4px', fontSize: '14px' }}>AI 사용량 조회</h3>
               <p style={{ margin: 0, fontSize: '11px', color: 'var(--text-soft)' }}>
-                전사 총 한도로 차단하고, 사용자별 누적 사용 금액을 함께 기록합니다.
+                0달러 사용자는 숨김 처리했습니다.
               </p>
             </div>
             <button
@@ -362,10 +393,10 @@ function AdminPage() {
             >
               <span>기준 월: {aiUsageSummary?.period_month ?? '-'}</span>
               <span>
-                전사 한도: {aiUsageSummary ? formatUsd(aiUsageSummary.monthly_limit_usd) : '-'}
+                전사 한도: {aiUsageSummary ? formatUsd(aiUsageSummary.monthly_limit_usd, 4) : '-'}
               </span>
-              <span>사용: {aiUsageSummary ? formatUsd(aiUsageSummary.used_usd) : '-'}</span>
-              <span>잔여: {aiUsageSummary ? formatUsd(aiUsageSummary.remaining_usd) : '-'}</span>
+              <span>사용: {aiUsageSummary ? formatUsd(aiUsageSummary.used_usd, 6) : '-'}</span>
+              <span>잔여: {aiUsageSummary ? formatUsd(aiUsageSummary.remaining_usd, 6) : '-'}</span>
             </div>
           </div>
 
@@ -433,10 +464,8 @@ function AdminPage() {
                   <span>{row.name}</span>
                   <span style={{ textAlign: 'left' }}>{row.email}</span>
                   <span>{row.department}</span>
-                  <span>{formatUsd(row.used_usd)}</span>
-                  <span>
-                    {row.updated_at ? row.updated_at.slice(0, 16).replace('T', ' ') : '-'}
-                  </span>
+                  <span>{formatUsd(row.used_usd, 6)}</span>
+                  <span>{formatKstDateTime(row.updated_at)}</span>
                 </div>
               ))
             )}

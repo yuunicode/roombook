@@ -14,14 +14,14 @@ class GlobalAiQuota(Base):
     monthly_limit_usd: Mapped[Decimal] = mapped_column(
         Numeric(10, 4),
         nullable=False,
-        default=Decimal("10.0000"),
-        server_default="10.0000",
+        default=Decimal("5.0000"),
+        server_default="5.0000",
     )
     used_usd: Mapped[Decimal] = mapped_column(
-        Numeric(10, 4),
+        Numeric(12, 6),
         nullable=False,
-        default=Decimal("0.0000"),
-        server_default="0.0000",
+        default=Decimal("0.000000"),
+        server_default="0.000000",
     )
     period_month: Mapped[str] = mapped_column(String(7), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

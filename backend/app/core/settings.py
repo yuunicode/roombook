@@ -21,4 +21,4 @@ SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "
 SESSION_SIGNING_SECRET = os.getenv("SESSION_SIGNING_SECRET", "change-this-in-production")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-AI_GLOBAL_MONTHLY_LIMIT_USD = os.getenv("AI_GLOBAL_MONTHLY_LIMIT_USD", "10.0000").strip()
+AI_GLOBAL_MONTHLY_LIMIT_USD = os.getenv("AI_GLOBAL_MONTHLY_LIMIT_USD", "5.0000").strip()
