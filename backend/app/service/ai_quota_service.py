@@ -5,8 +5,8 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import AI_GLOBAL_MONTHLY_LIMIT_USD
-from app.infra.global_ai_quota_repo import find_or_create_global_ai_quota
-from app.infra.user_ai_quota_repo import (
+from app.infra.global_ai_quota import find_or_create_global_ai_quota
+from app.infra.user_ai_quota import (
     find_or_create_user_ai_quota,
     list_user_ai_quotas_with_users,
     sum_user_ai_usage_by_period,

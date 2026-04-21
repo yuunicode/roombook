@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infra.reservation_label_repo import (
+from app.infra.reservation_label import (
     add_reservation_label,
     delete_reservation_label,
     find_reservation_label,

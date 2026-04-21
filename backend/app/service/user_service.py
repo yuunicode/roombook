@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infra.user import User
-from app.infra.user_repo import (
+from app.infra.user import (
+    User,
     add_user,
     count_active_admin_users,
     find_user_by_email_ci,

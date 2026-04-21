@@ -7,8 +7,7 @@ import bcrypt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import SESSION_COOKIE_MAX_AGE_SECONDS, SESSION_SIGNING_SECRET
-from app.infra.user import User
-from app.infra.user_repo import find_user_by_email_ci, find_user_by_id
+from app.infra.user import User, find_user_by_email_ci, find_user_by_id
 
 
 @dataclass(frozen=True, slots=True)

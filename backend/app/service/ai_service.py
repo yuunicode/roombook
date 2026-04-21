@@ -5,12 +5,12 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.core.settings import OPENAI_API_KEY
-from app.infra.openai_gateway import (
+from app.infra.openai import (
     repair_minutes_json,
     suggest_minutes_json,
 )
-from app.infra.openai_gateway import (
-    transcribe_audio_chunk as transcribe_audio_chunk_gateway,
+from app.infra.openai import (
+    transcribe_audio_chunk as openai_transcribe_audio_chunk,
 )
 from app.service.domain import DomainError
 
@@ -95,6 +95,14 @@ def _parse_minutes_json(raw_content: str) -> dict[str, object] | None:
     except Exception:
         return None
     return extracted if isinstance(extracted, dict) else None
+
+
+def _is_non_object_json(raw_content: str) -> bool:
+    try:
+        parsed = json.loads(raw_content)
+    except Exception:
+        return False
+    return parsed is not None and not isinstance(parsed, dict)
 
 
 _SILENCE_LINE_PATTERN = re.compile(
@@ -256,7 +264,7 @@ def transcribe_audio_chunk(
 
     try:
         prompt = (previous_text or "").strip()[-1000:]
-        gateway_result = transcribe_audio_chunk_gateway(
+        gateway_result = openai_transcribe_audio_chunk(
             audio_bytes=audio_bytes,
             extension=extension,
             mime_type=normalized_mime_type,
@@ -323,6 +331,12 @@ def suggest_minutes_bullets(
         gateway_result = suggest_minutes_json(system_instruction=system_instruction, user_prompt=user_prompt)
     except Exception as exc:
         return DomainError(code="INVALID_ARGUMENT", message=f"회의록 생성에 실패했습니다: {exc}")
+
+    if _is_non_object_json(gateway_result.content):
+        return DomainError(
+            code="INVALID_ARGUMENT",
+            message="회의록 생성에 실패했습니다: 모델 응답 형식이 올바른 JSON 객체가 아닙니다.",
+        )
 
     parsed = _parse_minutes_json(gateway_result.content)
     repaired_usage = None

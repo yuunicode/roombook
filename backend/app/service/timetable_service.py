@@ -5,8 +5,8 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infra.reservation_repo import list_month_preview_rows, list_week_reservations
-from app.infra.room_repo import find_room_by_id
+from app.infra.reservation import list_month_preview_rows, list_week_reservations
+from app.infra.room import find_room_by_id
 
 KST = ZoneInfo("Asia/Seoul")
 

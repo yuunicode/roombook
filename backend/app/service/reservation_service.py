@@ -6,18 +6,17 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infra.minutes_live_state_repo import (
+from app.infra.minutes_live_state import (
     add_or_update_minutes_live_state,
     find_minutes_live_state,
 )
-from app.infra.minutes_lock_repo import (
+from app.infra.minutes_lock import (
     add_or_update_minutes_lock,
     delete_minutes_lock,
     find_minutes_lock,
 )
-from app.infra.reservation import Reservation
-from app.infra.reservation_attendee_repo import list_attendees_by_reservation_id, replace_reservation_attendees
-from app.infra.reservation_repo import (
+from app.infra.reservation import (
+    Reservation,
     add_reservation,
     find_owned_reservation_by_id,
     find_owned_reservation_with_timetable_and_creator,
@@ -25,12 +24,10 @@ from app.infra.reservation_repo import (
     find_reservation_with_timetable_and_creator,
     list_all_reservations_with_timetable_and_creator,
 )
-from app.infra.room import Room
-from app.infra.room_repo import find_room_by_id
-from app.infra.timetable import Timetable
-from app.infra.timetable_repo import add_timetable, find_timetable_by_room_and_time
-from app.infra.user import User
-from app.infra.user_repo import find_user_by_id
+from app.infra.reservation_attendee import list_attendees_by_reservation_id, replace_reservation_attendees
+from app.infra.room import Room, find_room_by_id
+from app.infra.timetable import Timetable, add_timetable, find_timetable_by_room_and_time
+from app.infra.user import User, find_user_by_id
 from app.service.auth_service import AuthUser
 from app.service.domain import DomainError
 from app.service.user_service import resolve_attendee_user_ids

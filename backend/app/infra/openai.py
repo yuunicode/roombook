@@ -6,14 +6,14 @@ from app.core.settings import OPENAI_API_KEY
 
 
 @dataclass(frozen=True, slots=True)
-class GatewayTranscriptionResponse:
+class OpenAiTranscriptionResponse:
     text: str
     usage: object | None
     raw: object | None
 
 
 @dataclass(frozen=True, slots=True)
-class GatewayChatResponse:
+class OpenAiChatResponse:
     content: str
     usage: object | None
 
@@ -27,7 +27,7 @@ def transcribe_audio_chunk(
     extension: str,
     mime_type: str,
     prompt: str | None,
-) -> GatewayTranscriptionResponse:
+) -> OpenAiTranscriptionResponse:
     file_name = f"chunk.{extension.strip() or 'webm'}"
     if prompt:
         response = _client().audio.transcriptions.create(
@@ -40,14 +40,14 @@ def transcribe_audio_chunk(
             model="gpt-4o-mini-transcribe",
             file=(file_name, audio_bytes, mime_type),
         )
-    return GatewayTranscriptionResponse(
+    return OpenAiTranscriptionResponse(
         text=(response.text or "").strip(),
         usage=getattr(response, "usage", None),
         raw=response,
     )
 
 
-def suggest_minutes_json(system_instruction: str, user_prompt: str) -> GatewayChatResponse:
+def suggest_minutes_json(system_instruction: str, user_prompt: str) -> OpenAiChatResponse:
     response = _client().chat.completions.create(
         model="gpt-5-nano",
         response_format={"type": "json_object"},
@@ -57,10 +57,10 @@ def suggest_minutes_json(system_instruction: str, user_prompt: str) -> GatewayCh
         ],
     )
     content = response.choices[0].message.content or "{}"
-    return GatewayChatResponse(content=content, usage=getattr(response, "usage", None))
+    return OpenAiChatResponse(content=content, usage=getattr(response, "usage", None))
 
 
-def repair_minutes_json(raw_content: str) -> GatewayChatResponse:
+def repair_minutes_json(raw_content: str) -> OpenAiChatResponse:
     response = _client().chat.completions.create(
         model="gpt-5-nano",
         response_format={"type": "json_object"},
@@ -82,4 +82,4 @@ def repair_minutes_json(raw_content: str) -> GatewayChatResponse:
         ],
     )
     content = response.choices[0].message.content or "{}"
-    return GatewayChatResponse(content=content, usage=getattr(response, "usage", None))
+    return OpenAiChatResponse(content=content, usage=getattr(response, "usage", None))

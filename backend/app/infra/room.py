@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, String, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infra.db import Base
@@ -18,3 +19,13 @@ class Room(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+async def find_room_by_id(db: AsyncSession, room_id: str) -> Room | None:
+    row = await db.execute(select(Room).where(Room.id == room_id))
+    return row.scalar_one_or_none()
+
+
+async def list_rooms(db: AsyncSession) -> list[Room]:
+    rows = await db.execute(select(Room).order_by(Room.id.asc()))
+    return list(rows.scalars().all())

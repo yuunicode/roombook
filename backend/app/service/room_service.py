@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.infra.room_repo import list_rooms
+from app.infra.room import list_rooms
 
 
 @dataclass(frozen=True, slots=True)
