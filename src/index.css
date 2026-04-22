@@ -465,6 +465,36 @@ button { cursor: pointer; border: none; background: transparent; }
   gap: 12px;
 }
 
+.time-slots-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.time-slots-reset-button {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(16, 18, 24, 0.08);
+  border-radius: 6px;
+  background: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.time-slots-reset-button:hover:not(:disabled) {
+  border-color: rgba(16, 18, 24, 0.14);
+  background: #f8fafc;
+  color: var(--text);
+}
+
+.time-slots-reset-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .time-slots-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

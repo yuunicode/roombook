@@ -60,8 +60,26 @@ export function useReservationTimeSelection({
         locked.add(TIME_SLOTS[i]);
       }
     }
+    // 18:00 is only a valid end time in the current 30-minute grid.
+    locked.add(TIME_SLOTS[TIME_SLOTS.length - 1]);
     return locked;
   }, [isRangeBlocked, selectedDate]);
+
+  const blockedEndSlots = useMemo(() => {
+    if (!selectedDate || !startTime) return new Set<string>();
+
+    const locked = new Set<string>();
+    const rangeStart = parse(startTime, 'HH:mm', selectedDate);
+
+    for (const slot of TIME_SLOTS) {
+      const candidateEnd = parse(slot, 'HH:mm', selectedDate);
+      if (candidateEnd <= rangeStart || isRangeBlocked(rangeStart, candidateEnd)) {
+        locked.add(slot);
+      }
+    }
+
+    return locked;
+  }, [isRangeBlocked, selectedDate, startTime]);
 
   useEffect(() => {
     if (!enabled || !selectedDate) return;
@@ -95,9 +113,15 @@ export function useReservationTimeSelection({
     startTime,
   ]);
 
+  const resetTimeSelection = useCallback(() => {
+    setStartTime('');
+    setEndTime('');
+    setIsSelectingEnd(false);
+  }, [setEndTime, setIsSelectingEnd, setStartTime]);
+
   const handleTimeClick = useCallback(
     (slot: string) => {
-      if (!selectedDate) return;
+      if (!enabled || !selectedDate) return;
 
       if (!startTime) {
         if (blockedStartSlots.has(slot)) return;
@@ -107,89 +131,22 @@ export function useReservationTimeSelection({
         return;
       }
 
-      const lastSlot = TIME_SLOTS[TIME_SLOTS.length - 1];
-
-      if (!isSelectingEnd) {
-        if (slot === lastSlot) {
-          const currentStart = parse(startTime, 'HH:mm', selectedDate);
-          const candidateEnd = parse(lastSlot, 'HH:mm', selectedDate);
-          if (candidateEnd > currentStart && !isRangeBlocked(currentStart, candidateEnd)) {
-            setEndTime(lastSlot);
-            setIsSelectingEnd(false);
-          }
-          return;
-        }
-        if (blockedStartSlots.has(slot)) return;
-        const idx = TIME_SLOTS.indexOf(slot);
-        if (idx < 0) return;
-        let candidateEnd =
-          slot >= endTime ? TIME_SLOTS[Math.min(idx + 1, TIME_SLOTS.length - 1)] : endTime;
-        const rangeStart = parse(slot, 'HH:mm', selectedDate);
-        const rangeEnd = parse(candidateEnd, 'HH:mm', selectedDate);
-        if (rangeEnd <= rangeStart || isRangeBlocked(rangeStart, rangeEnd)) {
-          let found = false;
-          for (let endIdx = idx + 1; endIdx < TIME_SLOTS.length; endIdx += 1) {
-            const testEnd = TIME_SLOTS[endIdx];
-            const testEndDate = parse(testEnd, 'HH:mm', selectedDate);
-            if (testEndDate <= rangeStart) continue;
-            if (!isRangeBlocked(rangeStart, testEndDate)) {
-              candidateEnd = testEnd;
-              found = true;
-              break;
-            }
-          }
-          if (!found) {
-            alert('선택한 시작 시간 이후에 비어있는 구간이 없습니다.');
-            return;
-          }
-        }
-        setStartTime(slot);
-        setEndTime(candidateEnd);
-        setIsSelectingEnd(true);
-        return;
-      }
-
-      if (slot > startTime) {
-        const nextStart = parse(startTime, 'HH:mm', selectedDate);
-        const nextEnd = parse(slot, 'HH:mm', selectedDate);
-        if (isRangeBlocked(nextStart, nextEnd)) {
-          alert('이미 예약된 시간대를 포함할 수 없습니다.');
-          return;
-        }
+      if (isSelectingEnd) {
+        if (blockedEndSlots.has(slot)) return;
         setEndTime(slot);
         setIsSelectingEnd(false);
         return;
       }
 
       if (blockedStartSlots.has(slot)) return;
-      const idx = TIME_SLOTS.indexOf(slot);
-      if (idx < 0) return;
-      let candidateEnd =
-        slot >= endTime ? TIME_SLOTS[Math.min(idx + 1, TIME_SLOTS.length - 1)] : endTime;
-      const rangeStart = parse(slot, 'HH:mm', selectedDate);
-      let found = false;
-      for (let endIdx = idx + 1; endIdx < TIME_SLOTS.length; endIdx += 1) {
-        const testEnd = TIME_SLOTS[endIdx];
-        const testEndDate = parse(testEnd, 'HH:mm', selectedDate);
-        if (testEndDate <= rangeStart) continue;
-        if (!isRangeBlocked(rangeStart, testEndDate)) {
-          candidateEnd = testEnd;
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        alert('선택한 시작 시간 이후에 비어있는 구간이 없습니다.');
-        return;
-      }
       setStartTime(slot);
-      setEndTime(candidateEnd);
+      setEndTime('');
       setIsSelectingEnd(true);
     },
     [
+      blockedEndSlots,
       blockedStartSlots,
-      endTime,
-      isRangeBlocked,
+      enabled,
       isSelectingEnd,
       selectedDate,
       setEndTime,
@@ -199,7 +156,7 @@ export function useReservationTimeSelection({
     ]
   );
 
-  return { blockedStartSlots, handleTimeClick };
+  return { blockedStartSlots, blockedEndSlots, handleTimeClick, resetTimeSelection };
 }
 
 export function filterReservationUsers(

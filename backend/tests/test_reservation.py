@@ -117,6 +117,7 @@ def test_should_allow_internal_attendee_to_update_reservation_minutes(client: Te
         f"/api/reservations/{reservation_id}/minutes",
         json={
             "agenda": "- 공유할 내용",
+            "other_notes": "후속 의견 정리",
             "start_at": "2026-03-01T10:00:00+09:00",
             "end_at": "2026-03-01T11:00:00+09:00",
         },
@@ -124,6 +125,7 @@ def test_should_allow_internal_attendee_to_update_reservation_minutes(client: Te
 
     assert response.status_code == 200
     assert response.json()["agenda"] == "- 공유할 내용"
+    assert response.json()["other_notes"] == "후속 의견 정리"
 
 
 def test_should_return_403_when_non_attendee_acquires_minutes_lock(client: TestClient) -> None:

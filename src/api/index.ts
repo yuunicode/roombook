@@ -73,6 +73,7 @@ export type ReservationDto = {
   agenda?: string | null;
   meeting_content?: string | null;
   meeting_result?: string | null;
+  other_notes?: string | null;
   minutes_attachment?: string | null;
   created_by?: {
     name: string;
@@ -96,6 +97,7 @@ type ReservationUpsertPayload = {
   agenda?: string;
   meeting_content?: string;
   meeting_result?: string;
+  other_notes?: string;
   minutes_attachment?: string;
 };
 

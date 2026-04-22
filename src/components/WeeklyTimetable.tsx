@@ -34,6 +34,7 @@ export type TimetableReservation = CalendarEvent & {
   agenda: string;
   meetingContent: string;
   meetingResult: string;
+  otherNotes: string;
   minutesAttachment: string;
   creatorEmail: string;
   creatorName?: string;

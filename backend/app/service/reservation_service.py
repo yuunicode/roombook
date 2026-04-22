@@ -18,8 +18,8 @@ from app.infra.minutes_lock import (
 from app.infra.reservation import (
     Reservation,
     add_reservation,
-    find_reservation_conflict,
     find_owned_reservation_with_timetable_and_creator,
+    find_reservation_conflict,
     find_reservation_with_timetable_and_creator,
     list_all_reservations_with_timetable_and_creator,
 )
@@ -47,6 +47,7 @@ class CreateReservationInput:
     agenda: str | None
     meeting_content: str | None
     meeting_result: str | None
+    other_notes: str | None
     minutes_attachment: str | None
 
 
@@ -64,6 +65,7 @@ class UpdateReservationInput:
     agenda: str | None
     meeting_content: str | None
     meeting_result: str | None
+    other_notes: str | None
     minutes_attachment: str | None
 
 
@@ -104,6 +106,7 @@ class ReservationDetailResult:
     agenda: str | None
     meeting_content: str | None
     meeting_result: str | None
+    other_notes: str | None
     minutes_attachment: str | None
     created_by_name: str
     created_by_email: str
@@ -179,6 +182,7 @@ async def create_reservation(
             agenda=payload.agenda,
             meeting_content=payload.meeting_content,
             meeting_result=payload.meeting_result,
+            other_notes=payload.other_notes,
             minutes_attachment=payload.minutes_attachment,
         )
         add_reservation(db, reservation)
@@ -515,6 +519,7 @@ async def _update_reservation_internal(
         payload.meeting_content if payload.meeting_content is not None else reservation.meeting_content
     )
     next_meeting_result = payload.meeting_result if payload.meeting_result is not None else reservation.meeting_result
+    next_other_notes = payload.other_notes if payload.other_notes is not None else reservation.other_notes
     next_minutes_attachment = (
         payload.minutes_attachment if payload.minutes_attachment is not None else reservation.minutes_attachment
     )
@@ -559,6 +564,7 @@ async def _update_reservation_internal(
         reservation.agenda = next_agenda
         reservation.meeting_content = next_meeting_content
         reservation.meeting_result = next_meeting_result
+        reservation.other_notes = next_other_notes
         reservation.minutes_attachment = next_minutes_attachment
         if attendee_user_ids is not None:
             await replace_reservation_attendees(db, reservation.id, attendee_user_ids)
@@ -585,6 +591,7 @@ async def _update_reservation_internal(
         agenda=reservation.agenda,
         meeting_content=reservation.meeting_content,
         meeting_result=reservation.meeting_result,
+        other_notes=reservation.other_notes,
         minutes_attachment=reservation.minutes_attachment,
         created_by_name=creator.name,
         created_by_email=creator.email,
@@ -616,6 +623,7 @@ async def _to_reservation_detail_result(
         agenda=reservation.agenda,
         meeting_content=reservation.meeting_content,
         meeting_result=reservation.meeting_result,
+        other_notes=reservation.other_notes,
         minutes_attachment=reservation.minutes_attachment,
         created_by_name=creator.name,
         created_by_email=creator.email,

@@ -118,6 +118,7 @@ function mapReservationDtoToAppReservation(
     agenda: item.agenda ?? '',
     meetingContent: item.meeting_content ?? '',
     meetingResult: item.meeting_result ?? '',
+    otherNotes: item.other_notes ?? '',
     minutesAttachment: item.minutes_attachment ?? '',
     creatorEmail: item.created_by?.email ?? userEmailFallback(allUsers),
     creatorName: item.created_by?.name ?? '',
@@ -163,6 +164,7 @@ function isSameReservation(a: AppReservation, b: AppReservation): boolean {
     a.agenda === b.agenda &&
     a.meetingContent === b.meetingContent &&
     a.meetingResult === b.meetingResult &&
+    a.otherNotes === b.otherNotes &&
     a.minutesAttachment === b.minutesAttachment &&
     a.creatorEmail === b.creatorEmail &&
     a.creatorName === b.creatorName &&
@@ -319,6 +321,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         agenda: draft.agenda,
         meeting_content: draft.meetingContent,
         meeting_result: draft.meetingResult,
+        other_notes: draft.otherNotes,
         minutes_attachment: draft.minutesAttachment,
       });
       const mapped = mapReservationWithCurrentUsers(created);
@@ -339,6 +342,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         agenda: payload.agenda,
         meeting_content: payload.meetingContent,
         meeting_result: payload.meetingResult,
+        other_notes: payload.otherNotes,
         minutes_attachment: payload.minutesAttachment,
       });
       const mapped = mapReservationWithCurrentUsers(updated);
@@ -359,6 +363,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         agenda: payload.agenda,
         meeting_content: payload.meetingContent,
         meeting_result: payload.meetingResult,
+        other_notes: payload.otherNotes,
         minutes_attachment: payload.minutesAttachment,
       });
       const mapped = mapReservationWithCurrentUsers(updated);

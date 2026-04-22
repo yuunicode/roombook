@@ -22,6 +22,7 @@ type ReservationStatus = {
   agenda: string;
   meetingContent: string;
   meetingResult: string;
+  otherNotes: string;
   minutesAttachment: string;
   start: Date;
   end: Date;
@@ -110,18 +111,25 @@ function ReservationStatusDialog({
         .some((item) => start < item.end && item.start < end);
   }, [occupiedRanges, reservation]);
 
-  const { blockedStartSlots, handleTimeClick } = useReservationTimeSelection({
-    selectedDate,
-    startTime,
-    endTime,
-    isSelectingEnd,
-    isRangeBlocked,
-    setStartTime,
-    setEndTime,
-    setIsSelectingEnd,
-    enabled: isEditing,
-  });
+  const { blockedStartSlots, blockedEndSlots, handleTimeClick, resetTimeSelection } =
+    useReservationTimeSelection({
+      selectedDate,
+      startTime,
+      endTime,
+      isSelectingEnd,
+      isRangeBlocked,
+      setStartTime,
+      setEndTime,
+      setIsSelectingEnd,
+      enabled: isEditing,
+    });
   const handleAgendaKeyDown = useAgendaBulletKeyDown(setAgenda);
+  const selectedTimeLabel =
+    startTime && endTime
+      ? `${startTime} - ${endTime}`
+      : startTime
+        ? `${startTime} 이후 종료시간 선택`
+        : '시작시간 선택';
 
   if (!reservation) return null;
 
@@ -136,6 +144,10 @@ function ReservationStatusDialog({
     if (!title.trim() || !selectedDate) return;
     if (!canManageReservation) {
       alert(editForbiddenMessage);
+      return;
+    }
+    if (!startTime || !endTime) {
+      alert('시작시간과 종료시간을 선택해 주세요.');
       return;
     }
     const nextStart = parse(startTime, 'HH:mm', selectedDate);
@@ -158,6 +170,7 @@ function ReservationStatusDialog({
         agenda: agenda.trim(),
         meetingContent: reservation.meetingContent,
         meetingResult: reservation.meetingResult,
+        otherNotes: reservation.otherNotes,
         minutesAttachment: reservation.minutesAttachment,
         start: nextStart,
         end: nextEnd,
@@ -214,19 +227,34 @@ function ReservationStatusDialog({
               />
             </div>
             <div className="time-slots-wrapper">
-              <label className="status-info-label">시간 선택</label>
+              <div className="time-slots-header">
+                <label className="status-info-label">시간 선택</label>
+                <button
+                  type="button"
+                  className="time-slots-reset-button"
+                  onClick={resetTimeSelection}
+                  disabled={!startTime && !endTime && !isSelectingEnd}
+                >
+                  리셋
+                </button>
+              </div>
               <div className="time-slots-grid">
                 {TIME_SLOTS.map((slot) => {
                   const isStart = startTime === slot;
                   const isEnd = endTime === slot;
-                  const isInRange = slot > startTime && slot < endTime;
-                  const isDisabled = !isSelectingEnd && blockedStartSlots.has(slot) && !isEnd;
+                  const isInRange =
+                    Boolean(startTime && endTime) && slot > startTime && slot < endTime;
+                  const isDisabled = isSelectingEnd
+                    ? blockedEndSlots.has(slot)
+                    : blockedStartSlots.has(slot) && !isEnd;
 
                   return (
                     <button
+                      type="button"
                       key={slot}
                       className={`time-slot-button ${isStart ? 'active start-edge' : ''} ${isEnd ? 'active end-edge' : ''} ${isInRange ? 'in-range' : ''} ${isDisabled ? 'disabled' : ''}`}
                       onClick={() => handleTimeClick(slot)}
+                      disabled={isDisabled}
                       aria-disabled={isDisabled}
                     >
                       {slot}
@@ -256,7 +284,7 @@ function ReservationStatusDialog({
                   className="status-badge"
                   style={{ background: 'rgba(94, 106, 210, 0.06)', color: 'var(--accent)' }}
                 >
-                  {startTime} - {endTime}
+                  {selectedTimeLabel}
                 </span>
               </div>
             </div>

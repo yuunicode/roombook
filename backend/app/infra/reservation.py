@@ -34,6 +34,7 @@ class Reservation(Base):
     agenda: Mapped[str | None] = mapped_column(String(4000), nullable=True)
     meeting_content: Mapped[str | None] = mapped_column(String(8000), nullable=True)
     meeting_result: Mapped[str | None] = mapped_column(String(8000), nullable=True)
+    other_notes: Mapped[str | None] = mapped_column(String(8000), nullable=True)
     minutes_attachment: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

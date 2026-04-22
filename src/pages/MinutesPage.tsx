@@ -33,9 +33,10 @@ type MinutesDraft = {
   agenda: string;
   meetingContent: string;
   meetingResult: string;
+  otherNotes: string;
 };
 
-type MinutesField = 'agenda' | 'meetingContent' | 'meetingResult';
+type MinutesField = 'agenda' | 'meetingContent' | 'meetingResult' | 'otherNotes';
 type MinutesSectionKey = 'agenda' | 'meeting_content' | 'meeting_result';
 
 type EditLock = {
@@ -140,6 +141,9 @@ function buildMinutesMarkdown(draft: MinutesDraft, internalAttendeeText: string)
     '## 회의 결과',
     draft.meetingResult || '',
     '',
+    '## 기타 의견',
+    draft.otherNotes || '',
+    '',
   ].join('\n');
 }
 
@@ -208,6 +212,7 @@ function MinutesPage() {
     agenda: '',
     meetingContent: '',
     meetingResult: '',
+    otherNotes: '',
   });
   const [isEditing, setIsEditing] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
@@ -256,6 +261,7 @@ function MinutesPage() {
   const agendaRef = useRef<HTMLTextAreaElement>(null);
   const meetingContentRef = useRef<HTMLTextAreaElement>(null);
   const meetingResultRef = useRef<HTMLTextAreaElement>(null);
+  const otherNotesRef = useRef<HTMLTextAreaElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
   const currentUser = useMemo(
@@ -349,6 +355,7 @@ function MinutesPage() {
       agenda: activeReservation.agenda ?? '',
       meetingContent: activeReservation.meetingContent ?? '',
       meetingResult: activeReservation.meetingResult ?? '',
+      otherNotes: activeReservation.otherNotes ?? '',
     };
 
     setDraft(nextDraft);
@@ -377,6 +384,10 @@ function MinutesPage() {
   useEffect(() => {
     resizeTextarea(meetingResultRef.current);
   }, [draft.meetingResult]);
+
+  useEffect(() => {
+    resizeTextarea(otherNotesRef.current);
+  }, [draft.otherNotes]);
 
   useEffect(() => {
     if (!isEditing) return;
@@ -636,6 +647,7 @@ function MinutesPage() {
           agenda: draft.agenda,
           meetingContent: draft.meetingContent,
           meetingResult: draft.meetingResult,
+          otherNotes: draft.otherNotes,
           minutesAttachment: activeReservation.minutesAttachment,
         });
         setMinutesReservation(updated);
@@ -1482,6 +1494,26 @@ function MinutesPage() {
                 value={draft.meetingResult}
                 onChange={(e) => updateDraft({ meetingResult: e.target.value })}
                 onKeyDown={handleEditorKeyDown('meetingResult')}
+                disabled={!isEditing}
+              />
+            </div>
+
+            <div className="status-info-group">
+              <div className="minutes-section-title">기타 의견</div>
+              <textarea
+                ref={otherNotesRef}
+                className="minutes-textarea"
+                style={{
+                  minHeight: '120px',
+                  padding: '14px',
+                  fontSize: '15px',
+                  resize: 'none',
+                  overflow: 'hidden',
+                  borderRadius: '8px',
+                }}
+                value={draft.otherNotes}
+                onChange={(e) => updateDraft({ otherNotes: e.target.value })}
+                onKeyDown={handleEditorKeyDown('otherNotes')}
                 disabled={!isEditing}
               />
             </div>

@@ -55,6 +55,7 @@ class CreateReservationRequest(BaseModel):
     agenda: str | None = None
     meeting_content: str | None = None
     meeting_result: str | None = None
+    other_notes: str | None = None
     minutes_attachment: str | None = None
 
 
@@ -97,6 +98,7 @@ class ReservationDetailResponse(BaseModel):
     agenda: str | None = None
     meeting_content: str | None = None
     meeting_result: str | None = None
+    other_notes: str | None = None
     minutes_attachment: str | None = None
     created_by: CreatedByResponse
     attendees: list[AttendeeResponse]
@@ -115,6 +117,7 @@ class UpdateReservationRequest(BaseModel):
     agenda: str | None = None
     meeting_content: str | None = None
     meeting_result: str | None = None
+    other_notes: str | None = None
     minutes_attachment: str | None = None
 
 
@@ -173,6 +176,7 @@ async def create_reservation_api(
             agenda=payload.agenda,
             meeting_content=payload.meeting_content,
             meeting_result=payload.meeting_result,
+            other_notes=payload.other_notes,
             minutes_attachment=payload.minutes_attachment,
         ),
         auth_user_id=auth_user.id,
@@ -304,6 +308,7 @@ async def update_reservation_api(
             agenda=payload.agenda,
             meeting_content=payload.meeting_content,
             meeting_result=payload.meeting_result,
+            other_notes=payload.other_notes,
             minutes_attachment=payload.minutes_attachment,
         ),
         auth_user_id=auth_user.id,
@@ -351,6 +356,7 @@ async def update_reservation_minutes_api(
             agenda=payload.agenda,
             meeting_content=payload.meeting_content,
             meeting_result=payload.meeting_result,
+            other_notes=payload.other_notes,
             minutes_attachment=payload.minutes_attachment,
         ),
         auth_user_id=auth_user.id,
@@ -521,6 +527,7 @@ def _to_reservation_detail_response(result: ReservationDetailResult) -> Reservat
         agenda=result.agenda,
         meeting_content=result.meeting_content,
         meeting_result=result.meeting_result,
+        other_notes=result.other_notes,
         minutes_attachment=result.minutes_attachment,
         created_by=CreatedByResponse(name=result.created_by_name, email=result.created_by_email),
         attendees=[AttendeeResponse(id=item.id, name=item.name, email=item.email) for item in result.attendees],
