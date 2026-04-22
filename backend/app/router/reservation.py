@@ -274,6 +274,7 @@ async def get_reservation_minutes_api(
     responses={
         400: {"model": ErrorResponse},
         401: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
         404: {"model": ErrorResponse},
         409: {"model": ErrorResponse},
     },
@@ -320,6 +321,7 @@ async def update_reservation_api(
     responses={
         400: {"model": ErrorResponse},
         401: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
         404: {"model": ErrorResponse},
         409: {"model": ErrorResponse},
     },
@@ -351,6 +353,7 @@ async def update_reservation_minutes_api(
             meeting_result=payload.meeting_result,
             minutes_attachment=payload.minutes_attachment,
         ),
+        auth_user_id=auth_user.id,
         db=db,
     )
     if isinstance(result, DomainError):
@@ -379,7 +382,12 @@ async def get_minutes_lock_api(
 @router.post(
     "/{reservation_id}/minutes-lock",
     response_model=MinutesLockResponse,
-    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    responses={
+        401: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
 )
 async def acquire_minutes_lock_api(
     reservation_id: str,
@@ -472,7 +480,7 @@ async def update_minutes_live_state_api(
 @router.delete(
     "/{reservation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
 )
 async def delete_reservation_api(
     reservation_id: str,

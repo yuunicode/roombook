@@ -70,7 +70,7 @@ def test_should_return_global_summary_and_user_usage_for_admin(client: TestClien
     }
 
     rows = payload["items"]
-    assert len(rows) == 2
+    assert len(rows) == 3
 
     admin_row = next(row for row in rows if row["user_id"] == "1")
     assert admin_row["used_usd"] == 0.0
@@ -82,6 +82,12 @@ def test_should_return_global_summary_and_user_usage_for_admin(client: TestClien
     assert user_row["used_usd"] == 0.1234
     assert user_row["period_month"] == period_month
     assert user_row["updated_at"] is not None
+
+    outsider_row = next(row for row in rows if row["user_id"] == "3")
+    assert outsider_row["name"] == "외부사용자"
+    assert outsider_row["used_usd"] == 0.0
+    assert outsider_row["period_month"] == period_month
+    assert outsider_row["updated_at"] is None
 
 
 async def _insert_mismatched_quota_state(period_month: str) -> None:

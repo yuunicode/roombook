@@ -333,6 +333,7 @@ function TimetablePage() {
       <ReservationStatusDialog
         isOpen={isReservationStatusOpen}
         reservation={selectedReservation}
+        currentUser={currentUser}
         users={users}
         labelOptions={reservationLabels}
         occupiedRanges={visibleReservations.map((item) => ({ start: item.start, end: item.end }))}

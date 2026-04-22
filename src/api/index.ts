@@ -303,6 +303,16 @@ export async function createReservation(
   });
 }
 
+export async function updateReservation(
+  reservationId: string,
+  payload: ReservationUpsertPayload
+): Promise<ReservationDto> {
+  return requestJson<ReservationDto>(`/reservations/${reservationId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function updateReservationMinutes(
   reservationId: string,
   payload: ReservationUpsertPayload

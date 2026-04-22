@@ -32,6 +32,7 @@ type ReservationStatus = {
 type ReservationStatusDialogProps = {
   isOpen: boolean;
   reservation: ReservationStatus | null;
+  currentUser: AppUser | null;
   users: AppUser[];
   labelOptions: string[];
   occupiedRanges: Array<{ start: Date; end: Date }>;
@@ -40,12 +41,13 @@ type ReservationStatusDialogProps = {
     reservationId: string,
     payload: Omit<ReservationStatus, 'id' | 'creatorEmail' | 'creatorName'>
   ) => Promise<void> | void;
-  onDelete: (reservationId: string) => void;
+  onDelete: (reservationId: string) => Promise<void> | void;
 };
 
 function ReservationStatusDialog({
   isOpen,
   reservation,
+  currentUser,
   users,
   labelOptions,
   occupiedRanges,
@@ -123,8 +125,19 @@ function ReservationStatusDialog({
 
   if (!reservation) return null;
 
+  const canManageReservation =
+    currentUser !== null &&
+    (reservation.creatorEmail.toLowerCase() === currentUser.email.toLowerCase() ||
+      reservation.attendees.some((attendee) => attendee.id === currentUser.id));
+  const editForbiddenMessage = '예약자 또는 내부 참석자만 예약을 수정할 수 있습니다.';
+  const deleteForbiddenMessage = '예약자 또는 내부 참석자만 예약을 취소할 수 있습니다.';
+
   const handleSave = async () => {
     if (!title.trim() || !selectedDate) return;
+    if (!canManageReservation) {
+      alert(editForbiddenMessage);
+      return;
+    }
     const nextStart = parse(startTime, 'HH:mm', selectedDate);
     const nextEnd = parse(endTime, 'HH:mm', selectedDate);
     if (nextEnd <= nextStart) {
@@ -152,6 +165,28 @@ function ReservationStatusDialog({
       setIsEditing(false);
     } catch (error) {
       alert(error instanceof Error ? error.message : '예약 수정에 실패했습니다.');
+    }
+  };
+
+  const handleStartEdit = () => {
+    if (!canManageReservation) {
+      alert(editForbiddenMessage);
+      return;
+    }
+    setIsEditing(true);
+  };
+
+  const handleDelete = async () => {
+    if (!canManageReservation) {
+      alert(deleteForbiddenMessage);
+      return;
+    }
+
+    try {
+      await onDelete(reservation.id);
+      onClose();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '예약 취소에 실패했습니다.');
     }
   };
 
@@ -439,15 +474,14 @@ function ReservationStatusDialog({
         >
           회의록 보기
         </button>
-        <button className="nav-menu-item" onClick={() => setIsEditing(true)}>
+        <button className="nav-menu-item" onClick={handleStartEdit}>
           예약 수정
         </button>
         <button
           className="nav-menu-item"
           style={{ color: '#e5484d' }}
           onClick={() => {
-            onDelete(reservation.id);
-            onClose();
+            void handleDelete();
           }}
         >
           예약 취소

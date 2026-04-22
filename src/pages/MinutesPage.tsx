@@ -263,6 +263,13 @@ function MinutesPage() {
     [users, userEmail]
   );
   const viewerId = currentUser?.id ?? '';
+  const canManageActiveReservation = useMemo(() => {
+    if (!activeReservation || !currentUser) return false;
+    return (
+      activeReservation.creatorEmail.toLowerCase() === currentUser.email.toLowerCase() ||
+      activeReservation.attendees.some((attendee) => attendee.id === currentUser.id)
+    );
+  }, [activeReservation, currentUser]);
 
   const resizeTextarea = (element: HTMLTextAreaElement | null) => {
     if (!element) return;
@@ -300,7 +307,10 @@ function MinutesPage() {
       const result = await acquireMinutesLockApi(reservationId, 15);
       setActiveLock(toEditLock(result));
       return true;
-    } catch {
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : '회의록 수정 권한을 확인할 수 없습니다.';
+      setSaveMessage(message);
       const current = await readLock();
       setActiveLock(current);
       return false;
@@ -713,6 +723,10 @@ function MinutesPage() {
         setIsEditing(false);
         await releaseLock();
       })();
+      return;
+    }
+    if (!canManageActiveReservation) {
+      setSaveMessage('예약자 또는 내부 참석자만 회의록을 수정할 수 있습니다.');
       return;
     }
     void (async () => {

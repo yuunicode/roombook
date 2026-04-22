@@ -27,6 +27,7 @@ import {
   type LabelDto,
   type ReservationDto,
   type RoomDto,
+  updateReservation as updateReservationApi,
   updateReservationLabel as updateReservationLabelApi,
   updateReservationMinutes,
 } from '../api';
@@ -87,7 +88,7 @@ type AppStateContextValue = {
     payload: Omit<ReservationStatus, 'id' | 'creatorEmail' | 'creatorName'>
   ) => Promise<AppReservation>;
   getReservationMinutes: (reservationId: string) => Promise<AppReservation | null>;
-  deleteReservation: (reservationId: string) => void;
+  deleteReservation: (reservationId: string) => Promise<void>;
 };
 
 const AppStateContext = createContext<AppStateContextValue | null>(null);
@@ -295,7 +296,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
 
   const updateReservationAction = useCallback(
     async (id: string, payload: Omit<ReservationStatus, 'id' | 'creatorEmail'>) => {
-      const updated = await updateReservationMinutes(id, {
+      const updated = await updateReservationApi(id, {
         title: payload.title,
         label: payload.label,
         start_at: toIsoString(payload.start),
@@ -354,11 +355,9 @@ function AppStateProvider({ children }: { children: ReactNode }) {
     setReservations((prev) => mergeReservationList(prev, mapped));
   }, [mapReservationWithCurrentUsers]);
 
-  const deleteReservationAction = useCallback((id: string) => {
-    void (async () => {
-      await deleteReservationApi(id);
-      setReservations((prev) => prev.filter((reservation) => reservation.id !== id));
-    })();
+  const deleteReservationAction = useCallback(async (id: string) => {
+    await deleteReservationApi(id);
+    setReservations((prev) => prev.filter((reservation) => reservation.id !== id));
   }, []);
 
   const value = useMemo<AppStateContextValue>(

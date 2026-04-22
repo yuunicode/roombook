@@ -18,9 +18,8 @@ from app.infra.minutes_lock import (
 from app.infra.reservation import (
     Reservation,
     add_reservation,
-    find_owned_reservation_by_id,
-    find_owned_reservation_with_timetable_and_creator,
     find_reservation_conflict,
+    find_owned_reservation_with_timetable_and_creator,
     find_reservation_with_timetable_and_creator,
     list_all_reservations_with_timetable_and_creator,
 )
@@ -281,22 +280,29 @@ async def update_reservation(
     auth_user_id: str,
     db: AsyncSession,
 ) -> ReservationDetailResult | DomainError:
-    item = await find_owned_reservation_with_timetable_and_creator(db, reservation_id, auth_user_id)
+    item = await find_reservation_with_timetable_and_creator(db, reservation_id)
     if item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
     reservation, current_timetable, creator, room = item
+    permission_error = await _ensure_reservation_edit_permission(reservation.id, reservation.user_id, auth_user_id, db)
+    if permission_error is not None:
+        return permission_error
     return await _update_reservation_internal(reservation, current_timetable, creator, room, payload, db)
 
 
 async def update_reservation_minutes(
     reservation_id: str,
     payload: UpdateReservationInput,
+    auth_user_id: str,
     db: AsyncSession,
 ) -> ReservationDetailResult | DomainError:
     item = await find_reservation_with_timetable_and_creator(db, reservation_id)
     if item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
     reservation, current_timetable, creator, room = item
+    permission_error = await _ensure_minutes_edit_permission(reservation.id, reservation.user_id, auth_user_id, db)
+    if permission_error is not None:
+        return permission_error
     return await _update_reservation_internal(reservation, current_timetable, creator, room, payload, db)
 
 
@@ -305,9 +311,15 @@ async def delete_reservation(
     auth_user_id: str,
     db: AsyncSession,
 ) -> None | DomainError:
-    reservation = await find_owned_reservation_by_id(db, reservation_id, auth_user_id)
-    if reservation is None:
+    item = await find_reservation_with_timetable_and_creator(db, reservation_id)
+    if item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
+    reservation, _, _, _ = item
+    permission_error = await _ensure_reservation_delete_permission(
+        reservation.id, reservation.user_id, auth_user_id, db
+    )
+    if permission_error is not None:
+        return permission_error
 
     await db.delete(reservation)
     await db.commit()
@@ -342,6 +354,10 @@ async def acquire_minutes_lock(
     reservation_item = await find_reservation_with_timetable_and_creator(db, reservation_id)
     if reservation_item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
+    reservation, _, _, _ = reservation_item
+    permission_error = await _ensure_minutes_edit_permission(reservation.id, reservation.user_id, holder.id, db)
+    if permission_error is not None:
+        return permission_error
 
     now = datetime.now(UTC)
     current = await find_minutes_lock(db, reservation_id)
@@ -431,6 +447,10 @@ async def update_minutes_live_state(
     reservation_item = await find_reservation_with_timetable_and_creator(db, reservation_id)
     if reservation_item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
+    reservation, _, _, _ = reservation_item
+    permission_error = await _ensure_minutes_edit_permission(reservation.id, reservation.user_id, holder.id, db)
+    if permission_error is not None:
+        return permission_error
 
     now = datetime.now(UTC)
     lock = await find_minutes_lock(db, reservation_id)
@@ -601,6 +621,69 @@ async def _to_reservation_detail_result(
         created_by_email=creator.email,
         attendees=attendees,
     )
+
+
+async def _ensure_reservation_edit_permission(
+    reservation_id: str,
+    creator_user_id: str,
+    auth_user_id: str,
+    db: AsyncSession,
+) -> DomainError | None:
+    return await _ensure_reservation_manager(
+        reservation_id,
+        creator_user_id,
+        auth_user_id,
+        db,
+        message="예약자 또는 내부 참석자만 예약을 수정할 수 있습니다.",
+    )
+
+
+async def _ensure_reservation_delete_permission(
+    reservation_id: str,
+    creator_user_id: str,
+    auth_user_id: str,
+    db: AsyncSession,
+) -> DomainError | None:
+    return await _ensure_reservation_manager(
+        reservation_id,
+        creator_user_id,
+        auth_user_id,
+        db,
+        message="예약자 또는 내부 참석자만 예약을 취소할 수 있습니다.",
+    )
+
+
+async def _ensure_minutes_edit_permission(
+    reservation_id: str,
+    creator_user_id: str,
+    auth_user_id: str,
+    db: AsyncSession,
+) -> DomainError | None:
+    return await _ensure_reservation_manager(
+        reservation_id,
+        creator_user_id,
+        auth_user_id,
+        db,
+        message="예약자 또는 내부 참석자만 회의록을 수정할 수 있습니다.",
+    )
+
+
+async def _ensure_reservation_manager(
+    reservation_id: str,
+    creator_user_id: str,
+    auth_user_id: str,
+    db: AsyncSession,
+    *,
+    message: str,
+) -> DomainError | None:
+    if creator_user_id == auth_user_id:
+        return None
+
+    attendee_rows = await list_attendees_by_reservation_id(db, reservation_id)
+    if any(user_id == auth_user_id for user_id, _, _ in attendee_rows):
+        return None
+
+    return DomainError(code="FORBIDDEN", message=message)
 
 
 async def _find_or_create_timetable(
