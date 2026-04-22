@@ -1,6 +1,7 @@
 import asyncio
 import sys
 from pathlib import Path
+from typing import NotRequired, TypedDict
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -13,7 +14,15 @@ from app.service.auth_service import hash_password
 DEFAULT_USER_PASSWORD = "ecminer"
 LEGACY_ADMIN_EMAIL = "test@ecminer.com"
 
-USERS_DATA = [
+
+class SeedUserData(TypedDict):
+    name: str
+    email: str
+    department: str
+    is_admin: NotRequired[bool]
+
+
+USERS_DATA: list[SeedUserData] = [
     # R&D센터
     {"name": "최숙", "email": "choisook@ecminer.com", "department": "R&D센터"},
     {"name": "김형준", "email": "hjkim@ecminer.com", "department": "R&D센터"},
@@ -68,7 +77,7 @@ async def _seed_users_with_session(session: AsyncSession) -> None:
                 continue
 
             user_id = normalized_email.split("@", 1)[0]
-            is_admin = bool(user_data.get("is_admin", False))
+            is_admin = user_data["is_admin"] if "is_admin" in user_data else False
 
             session.add(
                 User(
@@ -96,7 +105,7 @@ async def _ensure_bootstrap_admin(session: AsyncSession) -> None:
         return
 
     bootstrap_admin_emails = [
-        user_data["email"].strip().lower() for user_data in USERS_DATA if bool(user_data.get("is_admin", False))
+        user_data["email"].strip().lower() for user_data in USERS_DATA if user_data.get("is_admin", False)
     ]
 
     for email in bootstrap_admin_emails:

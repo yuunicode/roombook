@@ -256,19 +256,22 @@ function TimetablePage() {
 
         <section className="timetable-main">
           <div className="calendar-control-row">
-            <div className="page-view-toggle">
-              <button
-                className={`page-mode-button ${calendarMode === 'weekly' ? 'active' : ''}`}
-                onClick={() => setCalendarMode('weekly')}
-              >
-                Weekly
-              </button>
-              <button
-                className={`page-mode-button ${calendarMode === 'monthly' ? 'active' : ''}`}
-                onClick={() => setCalendarMode('monthly')}
-              >
-                Monthly
-              </button>
+            <div className="page-view-controls">
+              <div className="page-view-toggle">
+                <button
+                  className={`page-mode-button ${calendarMode === 'weekly' ? 'active' : ''}`}
+                  onClick={() => setCalendarMode('weekly')}
+                >
+                  Weekly
+                </button>
+                <button
+                  className={`page-mode-button ${calendarMode === 'monthly' ? 'active' : ''}`}
+                  onClick={() => setCalendarMode('monthly')}
+                >
+                  Monthly
+                </button>
+              </div>
+              <p className="page-view-helper">사용시간을 드래그하여 예약할 수 있습니다.</p>
             </div>
             <div className="page-nav-only">
               <button className="page-nav-button" onClick={() => setCalendarDate(new Date())}>
