@@ -1,5 +1,6 @@
 /* Global Vars & Reset */
 :root {
+  --font-sans: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
   --bg: #ffffff;
   --panel: #ffffff;
   --border: #e6e8ec;
@@ -12,7 +13,19 @@
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: 'Pretendard', sans-serif; background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
 button { cursor: pointer; border: none; background: transparent; }
 
 /* App Layout & Header */
