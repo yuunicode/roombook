@@ -5,7 +5,6 @@
 새 문서는 아래를 참고하세요.
 
 - [docs/deploy/README.md](./deploy/README.md)
-- [docs/deploy/01-synology-nas-manual.md](./deploy/01-synology-nas-manual.md)
-- [docs/deploy/02-gitlab-cicd.md](./deploy/02-gitlab-cicd.md)
+- [docs/deploy/01-qnap-container-station.md](./deploy/01-qnap-container-station.md)
 
-이전 문서의 NAS Docker Compose 절차와 운영 메모는 `01-synology-nas-manual.md`에 포함되어 있습니다.
+이전 문서의 NAS Docker Compose 절차와 운영 메모는 `01-qnap-container-station.md`에 포함되어 있습니다.

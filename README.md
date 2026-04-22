@@ -47,7 +47,33 @@
 - API 통신: fetch
 
 ### Deployment
-- Synology NAS: Container Manager(Docker) + Reverse Proxy(HTTPS) 운영 가능
+- QNAP NAS: Container Station + PostgreSQL 운영 가능
+- 현재 운영 기준: `QNAP NAS(postgres-roombook:5432)` + `사내 PC(frontend/backend)`
+
+## 현재 배포 기준
+
+- NAS에는 PostgreSQL 컨테이너 `postgres-roombook`만 유지한다.
+- frontend와 backend는 다른 사내 PC에서 `docker compose`로 실행한다.
+- backend는 시작 시 NAS DB에 대해 마이그레이션과 사용자 시드를 자동 실행한다.
+
+앱 호스트 PC에서는 저장소 루트에서 아래처럼 실행한다.
+
+```bash
+cp .env.app.example .env.app
+# DATABASE_URL / SESSION_SIGNING_SECRET 수정
+docker compose --env-file .env.app -f docker-compose.app.yml up -d --build
+```
+
+주의:
+
+- QNAP Postgres 비밀번호는 저장소에 넣지 않는다.
+- `.env.app`의 `DATABASE_URL`에만 운영 비밀번호를 입력한다.
+- 현재 QNAP DB published port는 `5432` 기준이다.
+
+관련 문서:
+
+- [docs/deploy/01-qnap-container-station.md](./docs/deploy/01-qnap-container-station.md)
+- [docs/deploy/03-nas-db-app-host.md](./docs/deploy/03-nas-db-app-host.md)
 
 ---
 

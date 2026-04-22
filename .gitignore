@@ -23,6 +23,7 @@ yarn-error.log*
 # Env
 .env
 .env.docker
+.env.app
 .env.local
 .env.*.local
 
