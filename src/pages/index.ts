@@ -6,3 +6,4 @@ export { default as DashboardPage } from './DashboardPage';
 export { default as MinutesPage } from './MinutesPage';
 export { default as MinutesWikiPage } from './MinutesWikiPage';
 export { default as AdminPage } from './AdminPage';
+export { default as ReservationPreviewPage } from './ReservationPreviewPage';

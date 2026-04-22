@@ -1446,7 +1446,6 @@ function MinutesPage() {
                 style={{
                   minHeight: '120px',
                   padding: '14px',
-                  fontSize: '15px',
                   resize: 'none',
                   overflow: 'hidden',
                   borderRadius: '8px',
@@ -1466,7 +1465,6 @@ function MinutesPage() {
                 style={{
                   minHeight: '180px',
                   padding: '14px',
-                  fontSize: '15px',
                   resize: 'none',
                   overflow: 'hidden',
                   borderRadius: '8px',
@@ -1486,7 +1484,6 @@ function MinutesPage() {
                 style={{
                   minHeight: '140px',
                   padding: '14px',
-                  fontSize: '15px',
                   resize: 'none',
                   overflow: 'hidden',
                   borderRadius: '8px',
@@ -1506,7 +1503,6 @@ function MinutesPage() {
                 style={{
                   minHeight: '120px',
                   padding: '14px',
-                  fontSize: '15px',
                   resize: 'none',
                   overflow: 'hidden',
                   borderRadius: '8px',

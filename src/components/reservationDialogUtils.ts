@@ -113,12 +113,6 @@ export function useReservationTimeSelection({
     startTime,
   ]);
 
-  const resetTimeSelection = useCallback(() => {
-    setStartTime('');
-    setEndTime('');
-    setIsSelectingEnd(false);
-  }, [setEndTime, setIsSelectingEnd, setStartTime]);
-
   const handleTimeClick = useCallback(
     (slot: string) => {
       if (!enabled || !selectedDate) return;
@@ -132,6 +126,12 @@ export function useReservationTimeSelection({
       }
 
       if (isSelectingEnd) {
+        if (slot === startTime) {
+          setStartTime('');
+          setEndTime('');
+          setIsSelectingEnd(false);
+          return;
+        }
         if (blockedEndSlots.has(slot)) return;
         setEndTime(slot);
         setIsSelectingEnd(false);
@@ -156,7 +156,7 @@ export function useReservationTimeSelection({
     ]
   );
 
-  return { blockedStartSlots, blockedEndSlots, handleTimeClick, resetTimeSelection };
+  return { blockedStartSlots, blockedEndSlots, handleTimeClick };
 }
 
 export function filterReservationUsers(

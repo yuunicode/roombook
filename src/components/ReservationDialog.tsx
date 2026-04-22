@@ -98,8 +98,7 @@ function ReservationDialog({
     [occupiedRanges]
   );
 
-  const { blockedStartSlots, blockedEndSlots, handleTimeClick, resetTimeSelection } =
-    useReservationTimeSelection({
+  const { blockedStartSlots, blockedEndSlots, handleTimeClick } = useReservationTimeSelection({
       selectedDate,
       startTime,
       endTime,
@@ -175,17 +174,7 @@ function ReservationDialog({
           </div>
 
           <div className="time-slots-wrapper">
-            <div className="time-slots-header">
-              <label className="status-info-label">시간 선택</label>
-              <button
-                type="button"
-                className="time-slots-reset-button"
-                onClick={resetTimeSelection}
-                disabled={!startTime && !endTime && !isSelectingEnd}
-              >
-                리셋
-              </button>
-            </div>
+            <label className="status-info-label">시간 선택</label>
             <div className="time-slots-grid">
               {TIME_SLOTS.map((slot) => {
                 const isStart = startTime === slot;

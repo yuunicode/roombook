@@ -8,6 +8,7 @@ import {
   MinutesPage,
   MinutesWikiPage,
   AdminPage,
+  ReservationPreviewPage,
 } from './pages';
 import MainLayout from './layouts/MainLayout';
 import { useAppState } from './stores';
@@ -66,6 +67,7 @@ function App() {
         <Route element={<PublicOnlyRoute />}>
           <Route path="/login" element={<LoginPage />} />
         </Route>
+        <Route path="/preview/reservation-ui" element={<ReservationPreviewPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
