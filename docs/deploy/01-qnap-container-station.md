@@ -76,7 +76,7 @@ docker compose --env-file .env.app -f docker-compose.app.yml up -d --build
 
 `브라우저 -> 사내 PC(frontend/nginx) -> backend -> QNAP postgres`
 
-프런트는 `/api` 상대경로를 쓰고, nginx가 내부 `backend:8000`으로 프록시합니다.
+프런트는 `/api` 상대경로를 쓰고, nginx가 내부 `backend:9191`으로 프록시합니다.
 그래서 frontend와 backend는 같은 PC에 두는 편이 가장 단순합니다.
 
 ## 5. 현재 기준 참고 문서

@@ -100,6 +100,19 @@ async def get_me(
     return AuthResponse(user=_to_user_response(user))
 
 
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout() -> Response:
+    cleared_response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    cleared_response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        secure=SESSION_COOKIE_SECURE,
+        httponly=True,
+        samesite=SESSION_COOKIE_SAMESITE,
+        path=SESSION_COOKIE_PATH,
+    )
+    return cleared_response
+
+
 def _to_user_response(user: AuthUser) -> UserResponse:
     # 서비스 모델을 API 응답 모델로 변환한다.
     return UserResponse(id=user.id, name=user.name, email=user.email, is_admin=user.is_admin)

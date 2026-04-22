@@ -18,7 +18,7 @@
 이유:
 
 - 프런트 API base가 상대경로 `/api`로 고정돼 있습니다. [src/api/index.ts](../../src/api/index.ts)
-- 프런트 Nginx가 `/api`를 같은 Docker 네트워크의 `backend:8000`으로 프록시합니다. [docker/nginx/default.conf](../../docker/nginx/default.conf)
+- 프런트 Nginx가 `/api`를 같은 Docker 네트워크의 `backend:9191`으로 프록시합니다. [docker/nginx/default.conf](../../docker/nginx/default.conf)
 - 세션 쿠키 기반 인증이라 프런트와 백엔드를 같은 origin으로 두는 편이 단순합니다. [backend/app/core/settings.py](../../backend/app/core/settings.py)
 
 즉, `사용자 브라우저 -> 사내 PC(frontend/nginx) -> backend -> NAS postgres` 구조를 권장합니다.
@@ -65,7 +65,7 @@ docker compose --env-file .env.app -f docker-compose.app.yml up -d --build
 
 예:
 
-- `http://APP_HOST_PC_IP:8080`
+- `http://APP_HOST_PC_IP:9090`
 
 프런트 컨테이너의 Nginx가 `/api` 요청을 내부 `backend` 서비스로 넘기므로, 브라우저에서 백엔드 주소를 직접 알 필요가 없습니다.
 

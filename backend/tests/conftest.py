@@ -68,9 +68,6 @@ def client() -> Iterator[TestClient]:
                         password_hash=hash_password("ecminer3"),
                     ),
                     ReservationLabel(name="없음"),
-                    ReservationLabel(name="AIDA"),
-                    ReservationLabel(name="부동산"),
-                    ReservationLabel(name="KETI"),
                 ]
             )
             await session.commit()

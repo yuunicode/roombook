@@ -69,6 +69,24 @@ def test_should_return_401_when_session_cookie_is_missing(client: TestClient) ->
     }
 
 
+def test_should_logout_and_clear_session_cookie(client: TestClient) -> None:
+    login_response = client.post(
+        "/api/auth/login",
+        json={"email": "admin@ecminer.com", "password": "ecminer"},
+    )
+    assert login_response.status_code == 200
+
+    response = client.post("/api/auth/logout")
+
+    assert response.status_code == 204
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "ROOMBOOK_SESSION=" in set_cookie
+    assert "Max-Age=0" in set_cookie
+
+    me_response = client.get("/api/auth/me")
+    assert me_response.status_code == 401
+
+
 def test_should_login_with_case_insensitive_email(client: TestClient) -> None:
     response = client.post(
         "/api/auth/login",

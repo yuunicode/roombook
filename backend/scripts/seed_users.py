@@ -26,7 +26,6 @@ USERS_DATA = [
     {"name": "구하은", "email": "hekoo@ecminer.com", "department": "R&D센터"},
     {"name": "공보름", "email": "brgong@ecminer.com", "department": "R&D센터"},
     {"name": "구완모", "email": "wmku@ecminer.com", "department": "R&D센터"},
-    {"name": "조정흠", "email": "jeonghum@ecminer.com", "department": "R&D센터"},
     {"name": "김윤호", "email": "yhkim@ecminer.com", "department": "R&D센터"},
     # 컨설팅
     {"name": "최훈영", "email": "hychoi@ecminer.com", "department": "컨설팅"},

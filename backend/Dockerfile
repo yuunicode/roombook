@@ -22,6 +22,6 @@ COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN uv sync --frozen --no-dev \
     && chmod +x /app/docker-entrypoint.sh
 
-EXPOSE 8000
+EXPOSE 9191
 
 CMD ["./docker-entrypoint.sh"]

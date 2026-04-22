@@ -198,6 +198,12 @@ export async function getCurrentUser(): Promise<UserDto> {
   return result.user;
 }
 
+export async function logout(): Promise<void> {
+  await requestJson<void>('/auth/logout', {
+    method: 'POST',
+  });
+}
+
 export async function createCompanyUser(payload: CreateUserPayload): Promise<UserDto> {
   return requestJson<UserDto>('/users', {
     method: 'POST',

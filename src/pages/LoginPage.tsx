@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { loginWithPassword } from '../api';
 import { useAppState } from '../stores';
 import brandMark from '../brand-mark.svg';
 
 function LoginPage() {
   const navigate = useNavigate();
-  const { setUserEmail } = useAppState();
+  const location = useLocation();
+  const { setSessionUser } = useAppState();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const redirectPath = typeof location.state?.from === 'string' ? location.state.from : '/';
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,8 +24,14 @@ function LoginPage() {
     setErrorMessage('');
     try {
       const user = await loginWithPassword(email.trim().toLowerCase(), password);
-      setUserEmail(user.email);
-      navigate('/');
+      setSessionUser({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        department: user.department ?? '',
+        isAdmin: Boolean(user.is_admin),
+      });
+      navigate(redirectPath, { replace: true });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '로그인에 실패했습니다.');
     } finally {

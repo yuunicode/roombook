@@ -87,6 +87,10 @@ function AdminPage() {
         row.email.toLowerCase().includes(keyword)
     );
   }, [aiUsageRows, aiUsageSearchQuery]);
+  const managedReservationLabels = useMemo(
+    () => reservationLabels.filter((label) => label !== '없음'),
+    [reservationLabels]
+  );
 
   useEffect(() => {
     if (!isLoggedIn || !isCurrentUserAdmin) return;
@@ -662,60 +666,72 @@ function AdminPage() {
                 borderRadius: '8px',
               }}
             >
-              {reservationLabels.map((label) => (
-                <div
-                  key={label}
+              {managedReservationLabels.length === 0 ? (
+                <p
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr auto auto',
-                    gap: '8px',
-                    padding: '8px',
-                    borderBottom: '1px solid var(--border)',
-                    alignItems: 'center',
+                    margin: 0,
+                    padding: '12px',
+                    fontSize: '12px',
+                    color: 'var(--text-soft)',
                   }}
                 >
-                  <span style={{ fontSize: '12px', fontWeight: 600 }}>{label}</span>
-                  <input
-                    className="linear-input"
-                    value={labelRename[label] ?? label}
-                    onChange={(e) =>
-                      setLabelRename((prev) => ({ ...prev, [label]: e.target.value }))
-                    }
-                  />
-                  <button
-                    className="nav-menu-item"
-                    style={{ height: '28px' }}
-                    onClick={async () => {
-                      try {
-                        await renameReservationLabel(label, (labelRename[label] ?? label).trim());
-                        alert('변경되었습니다.');
-                      } catch (error) {
-                        alert(error instanceof Error ? error.message : '라벨 수정 실패');
-                      }
+                  등록된 사용자 라벨이 없습니다.
+                </p>
+              ) : (
+                managedReservationLabels.map((label) => (
+                  <div
+                    key={label}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr auto auto',
+                      gap: '8px',
+                      padding: '8px',
+                      borderBottom: '1px solid var(--border)',
+                      alignItems: 'center',
                     }}
                   >
-                    변경
-                  </button>
-                  <button
-                    className="nav-menu-item"
-                    style={{ height: '28px', color: '#e5484d' }}
-                    disabled={label === '없음'}
-                    onClick={async () => {
-                      const ok = window.confirm(
-                        `"${label}" 라벨을 제거하시겠습니까?\n기존 예약 라벨은 자동으로 "없음"으로 변경됩니다.`
-                      );
-                      if (!ok) return;
-                      try {
-                        await removeReservationLabel(label);
-                      } catch (error) {
-                        alert(error instanceof Error ? error.message : '라벨 삭제 실패');
+                    <span style={{ fontSize: '12px', fontWeight: 600 }}>{label}</span>
+                    <input
+                      className="linear-input"
+                      value={labelRename[label] ?? label}
+                      onChange={(e) =>
+                        setLabelRename((prev) => ({ ...prev, [label]: e.target.value }))
                       }
-                    }}
-                  >
-                    제거
-                  </button>
-                </div>
-              ))}
+                    />
+                    <button
+                      className="nav-menu-item"
+                      style={{ height: '28px' }}
+                      onClick={async () => {
+                        try {
+                          await renameReservationLabel(label, (labelRename[label] ?? label).trim());
+                          alert('변경되었습니다.');
+                        } catch (error) {
+                          alert(error instanceof Error ? error.message : '라벨 수정 실패');
+                        }
+                      }}
+                    >
+                      변경
+                    </button>
+                    <button
+                      className="nav-menu-item"
+                      style={{ height: '28px', color: '#e5484d' }}
+                      onClick={async () => {
+                        const ok = window.confirm(
+                          `"${label}" 라벨을 제거하시겠습니까?\n기존 예약 라벨은 자동으로 "없음"으로 변경됩니다.`
+                        );
+                        if (!ok) return;
+                        try {
+                          await removeReservationLabel(label);
+                        } catch (error) {
+                          alert(error instanceof Error ? error.message : '라벨 삭제 실패');
+                        }
+                      }}
+                    >
+                      제거
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

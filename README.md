@@ -24,7 +24,7 @@
 - 인증 성공 시 **세션 쿠키(HttpOnly)** 발급
 - 세션 쿠키 유지 기간: **1년**
 - 이후 사이트 접속 시 [로그인] 대신 **사용자 이름 표시**
-- **로그아웃 없음** (세션 만료 또는 브라우저 쿠키 삭제로만 해제)
+- 사용자 메뉴에서 **로그아웃 가능**
 
 ### 참석자 태그(연동)
 - 예약 생성/수정 시 참석자를 **태그/자동완성**으로 선택
@@ -63,6 +63,11 @@ cp .env.app.example .env.app
 # DATABASE_URL / SESSION_SIGNING_SECRET 수정
 docker compose --env-file .env.app -f docker-compose.app.yml up -d --build
 ```
+
+기본 포트:
+
+- 프런트: `http://localhost:9090`
+- 백엔드(개발/컨테이너 내부): `9191`
 
 주의:
 
@@ -136,7 +141,7 @@ docker compose --env-file .env.docker ps
 ```bash
 cd backend
 uv sync --dev
-uv run uvicorn app.main:app --reload --env-file .env
+uv run uvicorn app.main:app --reload --env-file .env --host 0.0.0.0 --port 9191
 ```
 
 ### Frontend

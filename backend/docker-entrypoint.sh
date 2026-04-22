@@ -13,4 +13,4 @@ case "${AUTO_SEED_USERS:-true}" in
     ;;
 esac
 
-exec uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+exec uv run uvicorn app.main:app --host "${HOST:-0.0.0.0}" --port "${PORT:-9191}"

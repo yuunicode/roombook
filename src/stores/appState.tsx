@@ -18,15 +18,18 @@ import {
   deleteCompanyUser as deleteCompanyUserApi,
   deleteReservationLabel as deleteReservationLabelApi,
   deleteReservation as deleteReservationApi,
+  getCurrentUser,
   getReservationMinutes as getReservationMinutesApi,
   listCompanyUsers,
   listReservationLabels as listReservationLabelsApi,
   listRooms,
   listReservations,
+  logout as logoutApi,
   setUserAdmin as setUserAdminApi,
   type LabelDto,
   type ReservationDto,
   type RoomDto,
+  type UserDto,
   updateReservation as updateReservationApi,
   updateReservationLabel as updateReservationLabelApi,
   updateReservationMinutes,
@@ -62,13 +65,14 @@ type NewUserInput = {
 type AppStateContextValue = {
   userEmail: string;
   isLoggedIn: boolean;
+  isAuthResolved: boolean;
   users: AppUser[];
   rooms: AppRoom[];
   reservations: AppReservation[];
   reservationLabels: string[];
   currentUser: AppUser | null;
   isCurrentUserAdmin: boolean;
-  setUserEmail: (email: string) => void;
+  setSessionUser: (user: AppUser | null) => void;
   addUser: (user: NewUserInput) => Promise<void>;
   removeUser: (userId: string) => Promise<void>;
   setUserAdmin: (userId: string, isAdmin: boolean) => Promise<void>;
@@ -76,7 +80,7 @@ type AppStateContextValue = {
   renameReservationLabel: (oldName: string, newName: string) => Promise<void>;
   removeReservationLabel: (name: string) => Promise<void>;
   reloadReservations: () => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   addReservation: (draft: ReservationDraft, room: string) => Promise<void>;
   updateReservation: (
@@ -93,8 +97,7 @@ type AppStateContextValue = {
 
 const AppStateContext = createContext<AppStateContextValue | null>(null);
 
-const SESSION_KEY = 'roombook_session_email';
-const DEFAULT_RESERVATION_LABELS = ['없음', 'AIDA', '부동산', 'KETI'];
+const DEFAULT_RESERVATION_LABELS = ['없음'];
 
 function mapReservationDtoToAppReservation(
   item: ReservationDto,
@@ -125,6 +128,16 @@ function mapReservationDtoToAppReservation(
 
 function userEmailFallback(users: AppUser[]): string {
   return users[0]?.email ?? '';
+}
+
+function mapUserDtoToAppUser(user: UserDto): AppUser {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email.trim().toLowerCase(),
+    department: user.department ?? '',
+    isAdmin: Boolean(user.is_admin),
+  };
 }
 
 function toIsoString(date: Date): string {
@@ -200,14 +213,20 @@ function mergeReservationList(prev: AppReservation[], next: AppReservation[]): A
 }
 
 function AppStateProvider({ children }: { children: ReactNode }) {
-  const [userEmail, setUserEmailState] = useState<string>(() => {
-    return window.localStorage.getItem(SESSION_KEY) ?? '';
-  });
+  const [authUser, setAuthUserState] = useState<AppUser | null>(null);
+  const [isAuthResolved, setIsAuthResolved] = useState(false);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [rooms, setRooms] = useState<AppRoom[]>([]);
   const [reservations, setReservations] = useState<AppReservation[]>([]);
   const [reservationLabels, setReservationLabels] = useState<string[]>(DEFAULT_RESERVATION_LABELS);
   const usersRef = useRef<AppUser[]>([]);
+
+  const resetAppData = useCallback(() => {
+    setUsers([]);
+    setRooms([]);
+    setReservations([]);
+    setReservationLabels(DEFAULT_RESERVATION_LABELS);
+  }, []);
 
   useEffect(() => {
     usersRef.current = users;
@@ -218,11 +237,34 @@ function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!userEmail) {
-      setUsers([]);
-      setRooms([]);
-      setReservations([]);
-      setReservationLabels(DEFAULT_RESERVATION_LABELS);
+    let mounted = true;
+
+    const restoreSession = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (!mounted) return;
+        setAuthUserState(mapUserDtoToAppUser(user));
+      } catch {
+        if (!mounted) return;
+        setAuthUserState(null);
+        resetAppData();
+      } finally {
+        if (mounted) {
+          setIsAuthResolved(true);
+        }
+      }
+    };
+
+    void restoreSession();
+
+    return () => {
+      mounted = false;
+    };
+  }, [resetAppData]);
+
+  useEffect(() => {
+    if (!authUser) {
+      resetAppData();
       return;
     }
 
@@ -236,13 +278,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
           listReservationLabelsApi(),
         ]);
         if (!mounted) return;
-        const mappedUsers: AppUser[] = nextUsers.map((user) => ({
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          department: user.department ?? '',
-          isAdmin: Boolean(user.is_admin),
-        }));
+        const mappedUsers = nextUsers.map(mapUserDtoToAppUser);
         setUsers(mappedUsers);
         setRooms(
           nextRooms.map((room: RoomDto) => ({
@@ -260,10 +296,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         setReservationLabels(labelNames.length > 0 ? labelNames : DEFAULT_RESERVATION_LABELS);
       } catch {
         if (!mounted) return;
-        setUsers([]);
-        setRooms([]);
-        setReservations([]);
-        setReservationLabels(DEFAULT_RESERVATION_LABELS);
+        resetAppData();
       }
     };
 
@@ -271,7 +304,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [userEmail]);
+  }, [authUser, resetAppData]);
 
   const addReservationAction = useCallback(
     async (draft: ReservationDraft, roomId: string) => {
@@ -362,25 +395,27 @@ function AppStateProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppStateContextValue>(
     () => ({
-      userEmail,
-      isLoggedIn: Boolean(userEmail),
+      userEmail: authUser?.email ?? '',
+      isLoggedIn: Boolean(authUser),
+      isAuthResolved,
       users,
       rooms,
       reservations,
       reservationLabels,
-      currentUser:
-        users.find((user) => user.email.toLowerCase() === userEmail.toLowerCase()) ?? null,
-      isCurrentUserAdmin:
-        users.find((user) => user.email.toLowerCase() === userEmail.toLowerCase())?.isAdmin ??
-        false,
-      setUserEmail: (email) => {
-        const normalized = email.trim().toLowerCase();
-        setUserEmailState(normalized);
-        if (normalized) {
-          window.localStorage.setItem(SESSION_KEY, normalized);
-        } else {
-          window.localStorage.removeItem(SESSION_KEY);
+      currentUser: authUser
+        ? (users.find((user) => user.email.toLowerCase() === authUser.email.toLowerCase()) ??
+          authUser)
+        : null,
+      isCurrentUserAdmin: authUser
+        ? (users.find((user) => user.email.toLowerCase() === authUser.email.toLowerCase())
+            ?.isAdmin ?? authUser.isAdmin)
+        : false,
+      setSessionUser: (user) => {
+        setAuthUserState(user ? { ...user, email: user.email.trim().toLowerCase() } : null);
+        if (!user) {
+          resetAppData();
         }
+        setIsAuthResolved(true);
       },
       addUser: async (user) => {
         const payload = {
@@ -390,41 +425,17 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         };
         await createCompanyUser(payload);
         const nextUsers = await listCompanyUsers();
-        setUsers(
-          nextUsers.map((item) => ({
-            id: item.id,
-            name: item.name,
-            email: item.email,
-            department: item.department ?? '',
-            isAdmin: Boolean(item.is_admin),
-          }))
-        );
+        setUsers(nextUsers.map(mapUserDtoToAppUser));
       },
       removeUser: async (userId) => {
         await deleteCompanyUserApi(userId);
         const nextUsers = await listCompanyUsers();
-        setUsers(
-          nextUsers.map((item) => ({
-            id: item.id,
-            name: item.name,
-            email: item.email,
-            department: item.department ?? '',
-            isAdmin: Boolean(item.is_admin),
-          }))
-        );
+        setUsers(nextUsers.map(mapUserDtoToAppUser));
       },
       setUserAdmin: async (userId, isAdmin) => {
         await setUserAdminApi(userId, isAdmin);
         const nextUsers = await listCompanyUsers();
-        setUsers(
-          nextUsers.map((item) => ({
-            id: item.id,
-            name: item.name,
-            email: item.email,
-            department: item.department ?? '',
-            isAdmin: Boolean(item.is_admin),
-          }))
-        );
+        setUsers(nextUsers.map(mapUserDtoToAppUser));
       },
       addReservationLabel: async (name) => {
         await createReservationLabelApi(name);
@@ -459,13 +470,15 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         setReservations((prev) => mergeReservationList(prev, mapped));
       },
       reloadReservations: reloadReservationsAction,
-      logout: () => {
-        setUserEmailState('');
-        window.localStorage.removeItem(SESSION_KEY);
-        setUsers([]);
-        setRooms([]);
-        setReservations([]);
-        setReservationLabels(DEFAULT_RESERVATION_LABELS);
+      logout: async () => {
+        setAuthUserState(null);
+        resetAppData();
+        setIsAuthResolved(true);
+        try {
+          await logoutApi();
+        } catch {
+          // Ignore logout API failure after clearing local auth state.
+        }
       },
       changePassword: async (currentPassword, newPassword) => {
         await changePasswordApi({
@@ -481,15 +494,17 @@ function AppStateProvider({ children }: { children: ReactNode }) {
     }),
     [
       addReservationAction,
+      authUser,
       deleteReservationAction,
       getReservationMinutesAction,
+      isAuthResolved,
       reloadReservationsAction,
       reservationLabels,
       reservations,
+      resetAppData,
       rooms,
       saveReservationMinutesAction,
       updateReservationAction,
-      userEmail,
       users,
     ]
   );

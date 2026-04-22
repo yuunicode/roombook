@@ -14,10 +14,10 @@ function MainLayout() {
       userEmail.split('@')[0])
     : '';
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
     setIsUserMenuOpen(false);
-    navigate('/');
+    await logout();
+    navigate('/login', { replace: true });
   };
 
   const navItems = [
