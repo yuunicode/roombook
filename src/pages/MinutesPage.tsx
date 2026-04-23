@@ -183,6 +183,48 @@ function encodeWavBlob(chunks: Float32Array[], sampleRate: number): Blob {
   return new Blob([pcmBuffer], { type: 'audio/wav' });
 }
 
+function getRecordingUnsupportedMessage() {
+  if (!window.isSecureContext) {
+    const { protocol, hostname } = window.location;
+    if (protocol === 'http:' && hostname !== 'localhost' && hostname !== '127.0.0.1') {
+      return '현재 접속 주소에서는 브라우저가 마이크 권한을 제공하지 않습니다. HTTPS 주소로 접속해 주세요.';
+    }
+    return '마이크 녹음은 HTTPS 또는 localhost에서만 사용할 수 있습니다.';
+  }
+
+  return '이 브라우저에서는 마이크 녹음을 지원하지 않습니다. 최신 Chrome 또는 Edge에서 다시 시도해 주세요.';
+}
+
+function getRecordingErrorMessage(error: unknown) {
+  if (error instanceof DOMException) {
+    switch (error.name) {
+      case 'NotAllowedError':
+      case 'PermissionDeniedError':
+      case 'SecurityError':
+        return '마이크 권한이 필요합니다. 브라우저 주소창의 권한 설정을 확인해 주세요.';
+      case 'NotFoundError':
+      case 'DevicesNotFoundError':
+        return '사용 가능한 마이크를 찾을 수 없습니다. 마이크 연결 상태를 확인해 주세요.';
+      case 'NotReadableError':
+      case 'TrackStartError':
+        return '마이크를 다른 앱이 사용 중이거나 접근할 수 없습니다. 다른 통화/녹음 앱을 종료한 뒤 다시 시도해 주세요.';
+      case 'OverconstrainedError':
+      case 'ConstraintNotSatisfiedError':
+        return '현재 장치의 마이크 설정으로는 녹음을 시작할 수 없습니다.';
+      case 'AbortError':
+        return '마이크 초기화가 중단되었습니다. 다시 시도해 주세요.';
+      default:
+        return error.message || '마이크를 사용할 수 없습니다.';
+    }
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return '마이크 권한을 확인해 주세요.';
+}
+
 function MinutesPage() {
   const navigate = useNavigate();
   const { reservationId } = useParams<{ reservationId: string }>();
@@ -268,6 +310,12 @@ function MinutesPage() {
     () => users.find((item) => item.email.toLowerCase() === userEmail.toLowerCase()) ?? null,
     [users, userEmail]
   );
+  const recordingSupportMessage = useMemo(() => {
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      return getRecordingUnsupportedMessage();
+    }
+    return '';
+  }, []);
   const viewerId = currentUser?.id ?? '';
   const canManageActiveReservation = useMemo(() => {
     if (!activeReservation || !currentUser) return false;
@@ -969,16 +1017,34 @@ function MinutesPage() {
       return;
     }
     void (async () => {
+      if (recordingSupportMessage) {
+        setSaveMessage(`녹음 시작 실패: ${recordingSupportMessage}`);
+        return;
+      }
       try {
+        if (navigator.mediaDevices.enumerateDevices) {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          if (devices.length > 0 && !devices.some((device) => device.kind === 'audioinput')) {
+            setSaveMessage(
+              '녹음 시작 실패: 사용 가능한 마이크를 찾을 수 없습니다. 마이크 연결 상태를 확인해 주세요.'
+            );
+            return;
+          }
+        }
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        await startSingleRecording(stream);
+        try {
+          await startSingleRecording(stream);
+        } catch (error) {
+          stream.getTracks().forEach((track) => track.stop());
+          setSaveMessage(`녹음 시작 실패: ${getRecordingErrorMessage(error)}`);
+        }
       } catch (error) {
-        const message = error instanceof Error ? error.message : '마이크 권한을 확인해 주세요.';
-        setSaveMessage(`녹음 시작 실패: ${message}`);
+        setSaveMessage(`녹음 시작 실패: ${getRecordingErrorMessage(error)}`);
       }
     })();
   }, [
     isEditing,
+    recordingSupportMessage,
     sharedIsRecording,
     sharedRecorderName,
     sharedRecorderUserId,
@@ -1536,6 +1602,9 @@ function MinutesPage() {
                 <p style={{ margin: '4px 0 0', color: 'var(--text-soft)', fontSize: '12px' }}>
                   녹음하면 전사 내용을 여기에서 확인하고 바로 회의록으로 정리할 수 있습니다.
                 </p>
+                <p style={{ margin: '6px 0 0', color: '#b42318', fontSize: '12px' }}>
+                  {recordingSupportMessage || '처음 시작할 때 브라우저가 마이크 권한을 요청합니다.'}
+                </p>
               </div>
               <button
                 className="nav-menu-item"
@@ -1582,6 +1651,7 @@ function MinutesPage() {
                 disabled={
                   isStoppingRecording ||
                   !isEditing ||
+                  (!isRecording && Boolean(recordingSupportMessage)) ||
                   (sharedIsRecording && sharedRecorderUserId !== viewerId)
                 }
                 style={{
@@ -1669,7 +1739,8 @@ function MinutesPage() {
                     color: '#1d4ed8',
                   }}
                 >
-                  회의록 자동생성 요청을 처리 중입니다. 전사 길이에 따라 수 초 이상 걸릴 수 있습니다.
+                  회의록 자동생성 요청을 처리 중입니다. 전사 길이에 따라 수 초 이상 걸릴 수
+                  있습니다.
                 </div>
               )}
               {!isGeneratingSummary && summaryGeneratedAt !== null && !hasSummarySuggestion && (
