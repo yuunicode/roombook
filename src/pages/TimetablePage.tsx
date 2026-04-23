@@ -9,6 +9,7 @@ import {
   type ReservationDraft,
   type TimetableReservation,
 } from '../components';
+import { openReservationEvents } from '../api';
 import { useAppState } from '../stores';
 
 function roundToNearestHalfHour(date: Date) {
@@ -97,10 +98,48 @@ function TimetablePage() {
 
   useEffect(() => {
     if (!isLoggedIn) return;
-    const intervalId = window.setInterval(() => {
-      void reloadReservations();
-    }, 60_000);
-    return () => window.clearInterval(intervalId);
+    let isActive = true;
+    let isReloading = false;
+    let needsReload = false;
+
+    const syncReservations = async () => {
+      if (!isActive) return;
+      if (isReloading) {
+        needsReload = true;
+        return;
+      }
+
+      isReloading = true;
+      try {
+        await reloadReservations();
+      } finally {
+        isReloading = false;
+        if (needsReload) {
+          needsReload = false;
+          void syncReservations();
+        }
+      }
+    };
+
+    void syncReservations();
+
+    const eventSource = openReservationEvents();
+    const handleReservationEvent = () => {
+      void syncReservations();
+    };
+    const handleFocus = () => {
+      void syncReservations();
+    };
+
+    eventSource.addEventListener('reservation', handleReservationEvent);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      isActive = false;
+      eventSource.removeEventListener('reservation', handleReservationEvent);
+      eventSource.close();
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [isLoggedIn, reloadReservations]);
 
   const handleOpenReservationFromGrid = (start: Date, end: Date) => {

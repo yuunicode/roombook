@@ -154,6 +154,11 @@ export type MinutesSuggestionResult = {
   meeting_result: string[];
 };
 
+export type ReservationEventDto = {
+  action: 'created' | 'updated' | 'deleted';
+  reservation_id: string;
+};
+
 const API_BASE = '/api';
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -335,6 +340,10 @@ export async function deleteReservation(reservationId: string): Promise<void> {
   await requestJson<void>(`/reservations/${reservationId}`, {
     method: 'DELETE',
   });
+}
+
+export function openReservationEvents(): EventSource {
+  return new EventSource(`${API_BASE}/reservations/events`, { withCredentials: true });
 }
 
 export async function getMinutesLock(reservationId: string): Promise<MinutesLockDto | null> {

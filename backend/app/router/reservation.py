@@ -1,7 +1,10 @@
+import asyncio
+import json
+from collections.abc import AsyncIterator
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +12,7 @@ from app.core.settings import SESSION_COOKIE_NAME
 from app.infra.db import get_db_session
 from app.service.auth_service import AuthUser, get_user_from_session_token
 from app.service.domain import DomainError
+from app.service.reservation_event_service import ReservationEvent, reservation_event_broker
 from app.service.reservation_service import (
     CreateReservationInput,
     MinutesLiveStateResult,
@@ -146,6 +150,51 @@ class UpdateMinutesLiveStateRequest(BaseModel):
     is_recording: bool | None = None
 
 
+@router.get(
+    "/events",
+    response_model=None,
+    responses={401: {"model": ErrorResponse}},
+)
+async def stream_reservation_events(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> StreamingResponse | JSONResponse:
+    auth_user = await _require_auth_user(request, db)
+    if auth_user is None:
+        return _error_response(status.HTTP_401_UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다.")
+
+    subscriber = await reservation_event_broker.subscribe()
+
+    async def event_stream() -> AsyncIterator[str]:
+        try:
+            yield "retry: 3000\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(subscriber.get(), timeout=25)
+                except TimeoutError:
+                    yield ": keep-alive\n\n"
+                    continue
+                payload = json.dumps(
+                    {"action": event.action, "reservation_id": event.reservation_id},
+                    ensure_ascii=False,
+                )
+                yield f"event: reservation\ndata: {payload}\n\n"
+        finally:
+            await reservation_event_broker.unsubscribe(subscriber)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.post(
     "",
     response_model=CreateReservationResponse,
@@ -184,6 +233,7 @@ async def create_reservation_api(
     )
     if isinstance(result, DomainError):
         return _error_response(_error_status(result.code), result.code, result.message)
+    await reservation_event_broker.publish(ReservationEvent(action="created", reservation_id=result.id))
 
     return CreateReservationResponse(
         id=result.id,
@@ -316,6 +366,7 @@ async def update_reservation_api(
     )
     if isinstance(result, DomainError):
         return _error_response(_error_status(result.code), result.code, result.message)
+    await reservation_event_broker.publish(ReservationEvent(action="updated", reservation_id=result.id))
 
     return _to_reservation_detail_response(result)
 
@@ -364,6 +415,7 @@ async def update_reservation_minutes_api(
     )
     if isinstance(result, DomainError):
         return _error_response(_error_status(result.code), result.code, result.message)
+    await reservation_event_broker.publish(ReservationEvent(action="updated", reservation_id=result.id))
 
     return _to_reservation_detail_response(result)
 
@@ -500,6 +552,7 @@ async def delete_reservation_api(
     result = await delete_reservation(reservation_id, auth_user.id, db)
     if isinstance(result, DomainError):
         return _error_response(_error_status(result.code), result.code, result.message)
+    await reservation_event_broker.publish(ReservationEvent(action="deleted", reservation_id=reservation_id))
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
