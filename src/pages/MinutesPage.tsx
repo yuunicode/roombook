@@ -64,6 +64,49 @@ function getBulletPrefix(level: number) {
   return `${BULLET_SYMBOLS[normalized]} `;
 }
 
+function insertTextAtSelection(
+  value: string,
+  selectionStart: number,
+  selectionEnd: number,
+  insertText: string
+) {
+  return {
+    nextValue: `${value.slice(0, selectionStart)}${insertText}${value.slice(selectionEnd)}`,
+    nextCursorStart: selectionStart + insertText.length,
+    nextCursorEnd: selectionStart + insertText.length,
+  };
+}
+
+function toggleMarkdownBold(value: string, selectionStart: number, selectionEnd: number) {
+  if (selectionStart === selectionEnd) {
+    return null;
+  }
+
+  const hasBoldMarkersAroundSelection =
+    value.slice(selectionStart - 2, selectionStart) === '**' &&
+    value.slice(selectionEnd, selectionEnd + 2) === '**';
+
+  if (hasBoldMarkersAroundSelection) {
+    return {
+      nextValue: `${value.slice(0, selectionStart - 2)}${value.slice(
+        selectionStart,
+        selectionEnd
+      )}${value.slice(selectionEnd + 2)}`,
+      nextCursorStart: selectionStart - 2,
+      nextCursorEnd: selectionEnd - 2,
+    };
+  }
+
+  return {
+    nextValue: `${value.slice(0, selectionStart)}**${value.slice(
+      selectionStart,
+      selectionEnd
+    )}**${value.slice(selectionEnd)}`,
+    nextCursorStart: selectionStart + 2,
+    nextCursorEnd: selectionEnd + 2,
+  };
+}
+
 function toMarkdownFilename(value: string) {
   const normalized = value.trim().replace(/[\\/:*?"<>|]/g, '-');
   return normalized || 'meeting-minutes';
@@ -539,27 +582,34 @@ function MinutesPage() {
       const lineEnd = nextLineBreakIndex === -1 ? value.length : nextLineBreakIndex;
       const line = value.slice(lineStart, lineEnd);
       const lineBeforeCursor = value.slice(lineStart, selectionStart);
+      const isBoldShortcut =
+        (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'b';
 
-      if (event.key === '-') {
-        if (selectionStart !== selectionEnd) return;
-        if (!/^\t*$/.test(lineBeforeCursor)) return;
+      if (isBoldShortcut) {
+        const result = toggleMarkdownBold(value, selectionStart, selectionEnd);
+        if (!result) return;
         event.preventDefault();
-        const indentLevel = Math.min(lineBeforeCursor.length, MAX_BULLET_LEVEL - 1);
-        const bullet = getBulletPrefix(indentLevel);
-        const nextValue = `${value.slice(0, selectionStart)}${bullet}${value.slice(selectionEnd)}`;
-        const nextCursor = selectionStart + bullet.length;
-        setFieldValueWithCursor(field, nextValue, nextCursor, nextCursor, textarea);
+        setFieldValueWithCursor(
+          field,
+          result.nextValue,
+          result.nextCursorStart,
+          result.nextCursorEnd,
+          textarea
+        );
         return;
       }
 
-      if (event.key === 'Enter') {
-        const bulletMatch = line.match(BULLET_PATTERN);
-        if (!bulletMatch) return;
+      if (event.key === ' ' || event.key === 'Spacebar') {
+        if (selectionStart !== selectionEnd) return;
+        if (!/^\t*-$/.test(lineBeforeCursor)) return;
         event.preventDefault();
-        const indent = bulletMatch[1] ?? '';
-        const insert = `\n${indent}${getBulletPrefix(indent.length)}`;
-        const nextValue = `${value.slice(0, selectionStart)}${insert}${value.slice(selectionEnd)}`;
-        const nextCursor = selectionStart + insert.length;
+        const indentLevel = Math.min(lineBeforeCursor.length - 1, MAX_BULLET_LEVEL - 1);
+        const bullet = getBulletPrefix(indentLevel);
+        const nextValue = `${value.slice(0, lineStart)}${lineBeforeCursor.slice(
+          0,
+          -1
+        )}${bullet}${value.slice(selectionEnd)}`;
+        const nextCursor = lineStart + lineBeforeCursor.length - 1 + bullet.length;
         setFieldValueWithCursor(field, nextValue, nextCursor, nextCursor, textarea);
         return;
       }
@@ -585,6 +635,14 @@ function MinutesPage() {
             const nextCursor = Math.max(lineStart, selectionStart - 2);
             setFieldValueWithCursor(field, nextValue, nextCursor, nextCursor, textarea);
           }
+
+          const plainIndentMatch = line.match(/^(\t+)(.*)$/);
+          if (plainIndentMatch) {
+            const nextLine = `${plainIndentMatch[1].slice(0, -1)}${plainIndentMatch[2]}`;
+            const nextValue = `${value.slice(0, lineStart)}${nextLine}${value.slice(lineEnd)}`;
+            const nextCursor = Math.max(lineStart, selectionStart - 1);
+            setFieldValueWithCursor(field, nextValue, nextCursor, nextCursor, textarea);
+          }
           return;
         }
 
@@ -599,15 +657,14 @@ function MinutesPage() {
           return;
         }
 
-        const plainLineMatch = line.match(/^(\t{0,4})(.*)$/);
-        if (plainLineMatch) {
-          const indent = plainLineMatch[1].slice(0, MAX_BULLET_LEVEL - 1);
-          const bullet = getBulletPrefix(indent.length);
-          const nextLine = `${indent}${bullet}${plainLineMatch[2]}`;
-          const nextValue = `${value.slice(0, lineStart)}${nextLine}${value.slice(lineEnd)}`;
-          const nextCursor = selectionStart + bullet.length;
-          setFieldValueWithCursor(field, nextValue, nextCursor, nextCursor, textarea);
-        }
+        const result = insertTextAtSelection(value, selectionStart, selectionEnd, '\t');
+        setFieldValueWithCursor(
+          field,
+          result.nextValue,
+          result.nextCursorStart,
+          result.nextCursorEnd,
+          textarea
+        );
       }
     },
     [isEditing, setFieldValueWithCursor]

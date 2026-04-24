@@ -3,19 +3,13 @@ import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { useAppState } from '../stores';
 
-const INTERNAL_ATTENDEE_VISIBLE_COUNT = 2;
-
 function formatInternalAttendees(attendees: Array<{ name: string }>) {
   if (attendees.length === 0) return '없음';
 
   const names = attendees.map((attendee) => attendee.name.trim()).filter((name) => name.length > 0);
 
   if (names.length === 0) return '없음';
-  if (names.length <= INTERNAL_ATTENDEE_VISIBLE_COUNT) return names.join(', ');
-
-  return `${names.slice(0, INTERNAL_ATTENDEE_VISIBLE_COUNT).join(', ')} +${
-    names.length - INTERNAL_ATTENDEE_VISIBLE_COUNT
-  }`;
+  return names.join(', ');
 }
 
 function MinutesWikiPage() {
