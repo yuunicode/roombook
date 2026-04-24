@@ -25,3 +25,4 @@ export const RELEASES = manifest.releases;
 export const CURRENT_RELEASE =
   RELEASES.find((release) => release.version === APP_VERSION) ?? RELEASES[0] ?? null;
 export const RELEASE_NOTES_STORAGE_KEY = 'roombook:last-seen-release';
+export const RELEASE_NOTES_DAILY_STORAGE_KEY = 'roombook:last-auto-opened-release-date';
