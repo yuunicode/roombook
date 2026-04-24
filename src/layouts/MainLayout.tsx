@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import brandMark from '../brand-mark.svg';
-import { AppIcon } from '../components';
+import { AppIcon, ReleaseNotesDialog } from '../components';
+import { useReleaseNotes } from '../hooks';
 import { useAppState } from '../stores';
 
 function MainLayout() {
@@ -9,6 +10,13 @@ function MainLayout() {
   const location = useLocation();
   const { isLoggedIn, userEmail, users, isCurrentUserAdmin, logout } = useAppState();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const {
+    currentVersion,
+    hasUnreadRelease,
+    isReleaseNotesOpen,
+    openReleaseNotes,
+    closeReleaseNotes,
+  } = useReleaseNotes();
   const displayName = isLoggedIn
     ? (users.find((user) => user.email.toLowerCase() === userEmail.toLowerCase())?.name ??
       userEmail.split('@')[0])
@@ -67,8 +75,25 @@ function MainLayout() {
 
               {isUserMenuOpen && (
                 <div className="user-dropdown-popover">
-                  <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+                  <div className="user-dropdown-section user-dropdown-identity">
                     <p style={{ fontSize: '11px', color: 'var(--text-soft)' }}>{userEmail}</p>
+                  </div>
+                  <div className="user-dropdown-section release-dropdown-summary">
+                    <div>
+                      <p className="user-dropdown-meta-label">현재 버전</p>
+                      <p className="user-dropdown-meta-value">v{currentVersion}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="release-inline-button"
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        openReleaseNotes();
+                      }}
+                    >
+                      업데이트 내역
+                      {hasUnreadRelease ? <span className="release-badge">NEW</span> : null}
+                    </button>
                   </div>
                   {isCurrentUserAdmin ? (
                     <button
@@ -103,6 +128,8 @@ function MainLayout() {
       <main className="main-content">
         <Outlet />
       </main>
+
+      <ReleaseNotesDialog isOpen={isReleaseNotesOpen} onClose={closeReleaseNotes} />
     </div>
   );
 }

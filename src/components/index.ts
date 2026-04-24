@@ -2,6 +2,7 @@
  * 재사용 가능한 UI 컴포넌트
  */
 export { default as MonthlyTimetable } from './MonthlyTimetable';
+export { default as ReleaseNotesDialog } from './ReleaseNotesDialog';
 export { default as ReservationDialog } from './ReservationDialog';
 export { default as ReservationStatusDialog } from './ReservationStatusDialog';
 export { default as WeeklyTimetable } from './WeeklyTimetable';

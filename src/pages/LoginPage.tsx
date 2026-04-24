@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { loginWithPassword } from '../api';
+import { ReleaseNotesDialog } from '../components';
+import { useReleaseNotes } from '../hooks';
 import { useAppState } from '../stores';
 import brandMark from '../brand-mark.svg';
 
@@ -12,6 +14,13 @@ function LoginPage() {
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const {
+    currentVersion,
+    hasUnreadRelease,
+    isReleaseNotesOpen,
+    openReleaseNotes,
+    closeReleaseNotes,
+  } = useReleaseNotes();
   const redirectPath = typeof location.state?.from === 'string' ? location.state.from : '/';
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -91,7 +100,21 @@ function LoginPage() {
             Cancel
           </button>
         </form>
+
+        <div className="auth-release-footer">
+          <p className="auth-release-version">현재 버전 v{currentVersion}</p>
+          <button
+            type="button"
+            className="release-inline-button auth-release-button"
+            onClick={openReleaseNotes}
+          >
+            업데이트 내역
+            {hasUnreadRelease ? <span className="release-badge">NEW</span> : null}
+          </button>
+        </div>
       </div>
+
+      <ReleaseNotesDialog isOpen={isReleaseNotesOpen} onClose={closeReleaseNotes} />
     </main>
   );
 }
