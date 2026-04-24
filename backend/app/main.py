@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.release import get_current_version
 from app.router.ai import router as ai_router
 from app.router.auth import router as auth_router
 from app.router.labels import router as labels_router
@@ -12,7 +13,7 @@ from app.router.users import router as users_router
 app = FastAPI(
     title="Roombook API",
     description="회의실 예약 시스템 API",
-    version="0.1.0",
+    version=get_current_version(),
 )
 
 # 프론트와 백엔드의 오리진이 다르기때문에
