@@ -531,8 +531,11 @@ button { cursor: pointer; border: none; background: transparent; }
 }
 
 .reservation-main-fields .room-capacity-tag {
-  font-size: 10px;
-  padding: 2px 7px;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  padding: 5px 10px;
 }
 
 .reservation-main-fields .minutes-textarea {
@@ -922,11 +925,11 @@ button { cursor: pointer; border: none; background: transparent; }
 
 .attendee-token-input {
   width: 100%;
-  min-height: 40px;
+  min-height: 48px;
   background: #f7f8fa;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 8px 10px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -938,9 +941,9 @@ button { cursor: pointer; border: none; background: transparent; }
   background: transparent;
   font-size: var(--form-control-font-size);
   line-height: var(--form-control-line-height);
-  min-width: 120px;
-  flex: 1 1 120px;
-  height: 26px;
+  min-width: 180px;
+  flex: 1 1 180px;
+  height: 30px;
   outline: none;
   color: var(--text);
 }
@@ -1102,7 +1105,7 @@ button { cursor: pointer; border: none; background: transparent; }
   .sidebar-card { flex: 1 0 240px; background: #fafafb; padding: 12px; border-radius: 12px; border: 1px solid var(--border); }
   .sidebar-card:has(.sidebar-add-button) { flex: 0 0 54px; }
   .sidebar-card:has(.room-button) { flex: 0 0 140px; }
-  .room-capacity-tag { display: none; }
+  .room-button .room-capacity-tag { display: none; }
   .auth-content-box { padding: 22px; }
   .release-sections-grid { grid-template-columns: 1fr; }
 }
