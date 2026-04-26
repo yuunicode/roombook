@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import brandMark from '../brand-mark.svg';
 import { AppIcon, ReleaseNotesDialog } from '../components';
@@ -10,6 +10,7 @@ function MainLayout() {
   const location = useLocation();
   const { isLoggedIn, userEmail, users, isCurrentUserAdmin, logout } = useAppState();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
   const {
     currentVersion,
     hasUnreadRelease,
@@ -21,6 +22,21 @@ function MainLayout() {
     ? (users.find((user) => user.email.toLowerCase() === userEmail.toLowerCase())?.name ??
       userEmail.split('@')[0])
     : '';
+
+  useEffect(() => {
+    if (!isUserMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!userMenuRef.current?.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [isUserMenuOpen]);
 
   const handleLogout = async () => {
     setIsUserMenuOpen(false);
@@ -61,7 +77,7 @@ function MainLayout() {
               LOGIN
             </button>
           ) : (
-            <div className="user-profile-wrapper">
+            <div className="user-profile-wrapper" ref={userMenuRef}>
               <button
                 className={`user-profile-toggle ${isUserMenuOpen ? 'active' : ''}`}
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
