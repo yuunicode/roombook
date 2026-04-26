@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infra.reservation_label import (
     add_reservation_label,
-    delete_reservation_label,
     find_reservation_label,
     list_reservation_labels,
     rename_reservation_label,
@@ -19,11 +18,12 @@ NONE_LABEL = "없음"
 @dataclass(frozen=True, slots=True)
 class ReservationLabelItem:
     name: str
+    is_hidden: bool
 
 
 async def list_labels(db: AsyncSession) -> list[ReservationLabelItem]:
-    names = await list_reservation_labels(db)
-    return [ReservationLabelItem(name=name) for name in names]
+    labels = await list_reservation_labels(db)
+    return [ReservationLabelItem(name=label.name, is_hidden=label.is_hidden) for label in labels]
 
 
 async def create_label(name: str, auth_user: AuthUser, db: AsyncSession) -> ReservationLabelItem | DomainError:
@@ -40,7 +40,7 @@ async def create_label(name: str, auth_user: AuthUser, db: AsyncSession) -> Rese
 
     add_reservation_label(db, normalized)
     await db.commit()
-    return ReservationLabelItem(name=normalized)
+    return ReservationLabelItem(name=normalized, is_hidden=False)
 
 
 async def update_label(
@@ -72,7 +72,31 @@ async def update_label(
         await rename_reservation_label(db, old_normalized, new_normalized)
         await db.commit()
 
-    return ReservationLabelItem(name=new_normalized)
+    return ReservationLabelItem(name=new_normalized, is_hidden=target.is_hidden)
+
+
+async def set_label_visibility(
+    name: str,
+    is_hidden: bool,
+    auth_user: AuthUser,
+    db: AsyncSession,
+) -> ReservationLabelItem | DomainError:
+    if not is_admin_user(auth_user):
+        return DomainError(code="FORBIDDEN", message="관리자만 라벨을 관리할 수 있습니다.")
+
+    normalized = name.strip()
+    if not normalized:
+        return DomainError(code="INVALID_ARGUMENT", message="라벨 이름은 비어 있을 수 없습니다.")
+    if normalized == NONE_LABEL:
+        return DomainError(code="INVALID_ARGUMENT", message="'없음' 라벨은 숨길 수 없습니다.")
+
+    label = await find_reservation_label(db, normalized)
+    if label is None:
+        return DomainError(code="NOT_FOUND", message="라벨을 찾을 수 없습니다.")
+
+    label.is_hidden = is_hidden
+    await db.commit()
+    return ReservationLabelItem(name=label.name, is_hidden=label.is_hidden)
 
 
 async def remove_label(name: str, auth_user: AuthUser, db: AsyncSession) -> None | DomainError:
@@ -83,12 +107,12 @@ async def remove_label(name: str, auth_user: AuthUser, db: AsyncSession) -> None
     if not normalized:
         return DomainError(code="INVALID_ARGUMENT", message="라벨 이름은 비어 있을 수 없습니다.")
     if normalized == NONE_LABEL:
-        return DomainError(code="INVALID_ARGUMENT", message="'없음' 라벨은 삭제할 수 없습니다.")
+        return DomainError(code="INVALID_ARGUMENT", message="'없음' 라벨은 숨길 수 없습니다.")
 
     label = await find_reservation_label(db, normalized)
     if label is None:
         return DomainError(code="NOT_FOUND", message="라벨을 찾을 수 없습니다.")
 
-    await delete_reservation_label(db, normalized)
+    label.is_hidden = True
     await db.commit()
     return None

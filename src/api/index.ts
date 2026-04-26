@@ -41,6 +41,7 @@ export type RoomDto = {
 
 export type LabelDto = {
   name: string;
+  is_hidden?: boolean;
 };
 
 type AuthResponse = {
@@ -253,6 +254,16 @@ export async function updateReservationLabel(oldName: string, name: string): Pro
   return requestJson<LabelDto>(`/labels/${encodeURIComponent(oldName)}`, {
     method: 'PATCH',
     body: JSON.stringify({ name }),
+  });
+}
+
+export async function setReservationLabelHidden(
+  name: string,
+  isHidden: boolean
+): Promise<LabelDto> {
+  return requestJson<LabelDto>(`/labels/${encodeURIComponent(name)}/visibility`, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_hidden: isHidden }),
   });
 }
 

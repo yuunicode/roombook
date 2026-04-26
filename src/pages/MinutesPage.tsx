@@ -489,6 +489,12 @@ function MinutesPage() {
     });
   }, [activeReservation, reservationLabels, isEditing]);
 
+  const editableReservationLabels = useMemo(() => {
+    const currentLabel = draft.label.trim();
+    if (!currentLabel || reservationLabels.includes(currentLabel)) return reservationLabels;
+    return [...reservationLabels, currentLabel];
+  }, [draft.label, reservationLabels]);
+
   useEffect(() => {
     resizeTextarea(agendaRef.current);
   }, [draft.agenda]);
@@ -1380,7 +1386,7 @@ function MinutesPage() {
                   outline: 'none',
                 }}
               >
-                {reservationLabels.map((label) => (
+                {editableReservationLabels.map((label) => (
                   <option key={label} value={label}>
                     {label}
                   </option>

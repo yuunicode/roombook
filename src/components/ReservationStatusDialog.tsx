@@ -86,6 +86,11 @@ function ReservationStatusDialog({
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('10:00');
   const [isSelectingEnd, setIsSelectingEnd] = useState(false);
+  const effectiveLabelOptions = useMemo(() => {
+    const currentLabel = selectedLabel.trim();
+    if (!currentLabel || labelOptions.includes(currentLabel)) return labelOptions;
+    return [...labelOptions, currentLabel];
+  }, [labelOptions, selectedLabel]);
 
   useEffect(() => {
     if (!reservation) return;
@@ -331,7 +336,7 @@ function ReservationStatusDialog({
               <div className="status-info-group">
                 <label className="status-info-label">라벨</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {labelOptions.map((label) => (
+                  {effectiveLabelOptions.map((label) => (
                     <button
                       key={label}
                       type="button"

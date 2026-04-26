@@ -33,13 +33,13 @@ function AdminPage() {
     isLoggedIn,
     isCurrentUserAdmin,
     users,
-    reservationLabels,
+    reservationLabelItems,
     addUser,
     removeUser,
     setUserAdmin,
     addReservationLabel,
     renameReservationLabel,
-    removeReservationLabel,
+    setReservationLabelHidden,
   } = useAppState();
 
   const [newUser, setNewUser] = useState({
@@ -88,8 +88,8 @@ function AdminPage() {
     );
   }, [aiUsageRows, aiUsageSearchQuery]);
   const managedReservationLabels = useMemo(
-    () => reservationLabels.filter((label) => label !== '없음'),
-    [reservationLabels]
+    () => reservationLabelItems.filter((label) => label.name !== '없음'),
+    [reservationLabelItems]
   );
 
   useEffect(() => {
@@ -627,7 +627,7 @@ function AdminPage() {
           >
             <h3 style={{ margin: '0 0 10px', fontSize: '14px' }}>라벨 관리</h3>
             <p style={{ margin: '0 0 8px', fontSize: '11px', color: 'var(--text-soft)' }}>
-              기본 라벨은 "없음"이며, 라벨 제거 시 기존 예약 라벨은 자동으로 "없음"으로 변경됩니다.
+              숨긴 라벨은 예약 선택지에서 보이지 않지만 기존 예약에는 그대로 남습니다.
             </p>
             <div
               style={{
@@ -680,7 +680,7 @@ function AdminPage() {
               ) : (
                 managedReservationLabels.map((label) => (
                   <div
-                    key={label}
+                    key={label.name}
                     style={{
                       display: 'grid',
                       gridTemplateColumns: '1fr 1fr auto auto',
@@ -688,14 +688,29 @@ function AdminPage() {
                       padding: '8px',
                       borderBottom: '1px solid var(--border)',
                       alignItems: 'center',
+                      opacity: label.isHidden ? 0.72 : 1,
                     }}
                   >
-                    <span style={{ fontSize: '12px', fontWeight: 600 }}>{label}</span>
+                    <span style={{ fontSize: '12px', fontWeight: 600 }}>
+                      {label.name}
+                      {label.isHidden && (
+                        <span
+                          style={{
+                            marginLeft: '6px',
+                            color: 'var(--text-soft)',
+                            fontSize: '11px',
+                            fontWeight: 500,
+                          }}
+                        >
+                          숨김
+                        </span>
+                      )}
+                    </span>
                     <input
                       className="linear-input"
-                      value={labelRename[label] ?? label}
+                      value={labelRename[label.name] ?? label.name}
                       onChange={(e) =>
-                        setLabelRename((prev) => ({ ...prev, [label]: e.target.value }))
+                        setLabelRename((prev) => ({ ...prev, [label.name]: e.target.value }))
                       }
                     />
                     <button
@@ -703,7 +718,10 @@ function AdminPage() {
                       style={{ height: '28px' }}
                       onClick={async () => {
                         try {
-                          await renameReservationLabel(label, (labelRename[label] ?? label).trim());
+                          await renameReservationLabel(
+                            label.name,
+                            (labelRename[label.name] ?? label.name).trim()
+                          );
                           alert('변경되었습니다.');
                         } catch (error) {
                           alert(error instanceof Error ? error.message : '라벨 수정 실패');
@@ -714,20 +732,25 @@ function AdminPage() {
                     </button>
                     <button
                       className="nav-menu-item"
-                      style={{ height: '28px', color: '#e5484d' }}
+                      style={{
+                        height: '28px',
+                        color: label.isHidden ? 'var(--accent)' : '#e5484d',
+                      }}
                       onClick={async () => {
-                        const ok = window.confirm(
-                          `"${label}" 라벨을 제거하시겠습니까?\n기존 예약 라벨은 자동으로 "없음"으로 변경됩니다.`
-                        );
-                        if (!ok) return;
+                        if (!label.isHidden) {
+                          const ok = window.confirm(
+                            `"${label.name}" 라벨을 숨기시겠습니까?\n기존 예약에는 라벨이 그대로 유지됩니다.`
+                          );
+                          if (!ok) return;
+                        }
                         try {
-                          await removeReservationLabel(label);
+                          await setReservationLabelHidden(label.name, !label.isHidden);
                         } catch (error) {
-                          alert(error instanceof Error ? error.message : '라벨 삭제 실패');
+                          alert(error instanceof Error ? error.message : '라벨 상태 변경 실패');
                         }
                       }}
                     >
-                      제거
+                      {label.isHidden ? '보이기' : '숨기기'}
                     </button>
                   </div>
                 ))

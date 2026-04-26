@@ -25,6 +25,7 @@ import {
   listRooms,
   listReservations,
   logout as logoutApi,
+  setReservationLabelHidden as setReservationLabelHiddenApi,
   setUserAdmin as setUserAdminApi,
   type LabelDto,
   type ReservationDto,
@@ -56,6 +57,11 @@ type AppRoom = {
   capacity: number;
 };
 
+type AppReservationLabel = {
+  name: string;
+  isHidden: boolean;
+};
+
 type NewUserInput = {
   id: string;
   name: string;
@@ -69,6 +75,7 @@ type AppStateContextValue = {
   users: AppUser[];
   rooms: AppRoom[];
   reservations: AppReservation[];
+  reservationLabelItems: AppReservationLabel[];
   reservationLabels: string[];
   currentUser: AppUser | null;
   isCurrentUserAdmin: boolean;
@@ -79,6 +86,7 @@ type AppStateContextValue = {
   addReservationLabel: (name: string) => Promise<void>;
   renameReservationLabel: (oldName: string, newName: string) => Promise<void>;
   removeReservationLabel: (name: string) => Promise<void>;
+  setReservationLabelHidden: (name: string, isHidden: boolean) => Promise<void>;
   reloadReservations: () => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -98,6 +106,21 @@ type AppStateContextValue = {
 const AppStateContext = createContext<AppStateContextValue | null>(null);
 
 const DEFAULT_RESERVATION_LABELS = ['없음'];
+
+function mapLabelDtoToAppLabel(item: LabelDto): AppReservationLabel {
+  return {
+    name: item.name,
+    isHidden: Boolean(item.is_hidden),
+  };
+}
+
+function visibleReservationLabelNames(labels: AppReservationLabel[]): string[] {
+  const labelNames = labels
+    .filter((item) => !item.isHidden)
+    .map((item) => item.name)
+    .filter((item) => item.trim());
+  return labelNames.length > 0 ? labelNames : DEFAULT_RESERVATION_LABELS;
+}
 
 function mapReservationDtoToAppReservation(
   item: ReservationDto,
@@ -220,6 +243,9 @@ function AppStateProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [rooms, setRooms] = useState<AppRoom[]>([]);
   const [reservations, setReservations] = useState<AppReservation[]>([]);
+  const [reservationLabelItems, setReservationLabelItems] = useState<AppReservationLabel[]>(
+    DEFAULT_RESERVATION_LABELS.map((name) => ({ name, isHidden: false }))
+  );
   const [reservationLabels, setReservationLabels] = useState<string[]>(DEFAULT_RESERVATION_LABELS);
   const usersRef = useRef<AppUser[]>([]);
 
@@ -227,6 +253,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
     setUsers([]);
     setRooms([]);
     setReservations([]);
+    setReservationLabelItems(DEFAULT_RESERVATION_LABELS.map((name) => ({ name, isHidden: false })));
     setReservationLabels(DEFAULT_RESERVATION_LABELS);
   }, []);
 
@@ -292,10 +319,9 @@ function AppStateProvider({ children }: { children: ReactNode }) {
         setReservations(
           nextReservations.map((item) => mapReservationDtoToAppReservation(item, mappedUsers))
         );
-        const labelNames = nextLabels
-          .map((item: LabelDto) => item.name)
-          .filter((item) => item.trim());
-        setReservationLabels(labelNames.length > 0 ? labelNames : DEFAULT_RESERVATION_LABELS);
+        const mappedLabels = nextLabels.map(mapLabelDtoToAppLabel);
+        setReservationLabelItems(mappedLabels);
+        setReservationLabels(visibleReservationLabelNames(mappedLabels));
       } catch {
         if (!mounted) return;
         resetAppData();
@@ -407,6 +433,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
       users,
       rooms,
       reservations,
+      reservationLabelItems,
       reservationLabels,
       currentUser: authUser
         ? (users.find((user) => user.email.toLowerCase() === authUser.email.toLowerCase()) ??
@@ -446,8 +473,9 @@ function AppStateProvider({ children }: { children: ReactNode }) {
       addReservationLabel: async (name) => {
         await createReservationLabelApi(name);
         const nextLabels = await listReservationLabelsApi();
-        const labelNames = nextLabels.map((item) => item.name).filter((item) => item.trim());
-        setReservationLabels(labelNames.length > 0 ? labelNames : DEFAULT_RESERVATION_LABELS);
+        const mappedLabels = nextLabels.map(mapLabelDtoToAppLabel);
+        setReservationLabelItems(mappedLabels);
+        setReservationLabels(visibleReservationLabelNames(mappedLabels));
       },
       renameReservationLabel: async (oldName, newName) => {
         await updateReservationLabelApi(oldName, newName);
@@ -455,8 +483,9 @@ function AppStateProvider({ children }: { children: ReactNode }) {
           listReservationLabelsApi(),
           listReservations(),
         ]);
-        const labelNames = nextLabels.map((item) => item.name).filter((item) => item.trim());
-        setReservationLabels(labelNames.length > 0 ? labelNames : DEFAULT_RESERVATION_LABELS);
+        const mappedLabels = nextLabels.map(mapLabelDtoToAppLabel);
+        setReservationLabelItems(mappedLabels);
+        setReservationLabels(visibleReservationLabelNames(mappedLabels));
         const mapped = nextReservations.map((item) =>
           mapReservationDtoToAppReservation(item, users)
         );
@@ -468,12 +497,20 @@ function AppStateProvider({ children }: { children: ReactNode }) {
           listReservationLabelsApi(),
           listReservations(),
         ]);
-        const labelNames = nextLabels.map((item) => item.name).filter((item) => item.trim());
-        setReservationLabels(labelNames.length > 0 ? labelNames : DEFAULT_RESERVATION_LABELS);
+        const mappedLabels = nextLabels.map(mapLabelDtoToAppLabel);
+        setReservationLabelItems(mappedLabels);
+        setReservationLabels(visibleReservationLabelNames(mappedLabels));
         const mapped = nextReservations.map((item) =>
           mapReservationDtoToAppReservation(item, users)
         );
         setReservations((prev) => mergeReservationList(prev, mapped));
+      },
+      setReservationLabelHidden: async (name, isHidden) => {
+        await setReservationLabelHiddenApi(name, isHidden);
+        const nextLabels = await listReservationLabelsApi();
+        const mappedLabels = nextLabels.map(mapLabelDtoToAppLabel);
+        setReservationLabelItems(mappedLabels);
+        setReservationLabels(visibleReservationLabelNames(mappedLabels));
       },
       reloadReservations: reloadReservationsAction,
       logout: async () => {
@@ -505,6 +542,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
       getReservationMinutesAction,
       isAuthResolved,
       reloadReservationsAction,
+      reservationLabelItems,
       reservationLabels,
       reservations,
       resetAppData,
@@ -525,4 +563,4 @@ function useAppState() {
 }
 
 export { AppStateProvider, useAppState };
-export type { AppReservation, AppRoom, AppUser, NewUserInput };
+export type { AppReservation, AppReservationLabel, AppRoom, AppUser, NewUserInput };

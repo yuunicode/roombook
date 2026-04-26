@@ -7,7 +7,13 @@ from app.core.settings import SESSION_COOKIE_NAME
 from app.infra.db import get_db_session
 from app.service.auth_service import AuthUser, get_user_from_session_token
 from app.service.domain import DomainError
-from app.service.reservation_label_service import create_label, list_labels, remove_label, update_label
+from app.service.reservation_label_service import (
+    create_label,
+    list_labels,
+    remove_label,
+    set_label_visibility,
+    update_label,
+)
 
 router = APIRouter(prefix="/api/labels", tags=["labels"])
 
@@ -23,6 +29,7 @@ class ErrorResponse(BaseModel):
 
 class LabelResponse(BaseModel):
     name: str
+    is_hidden: bool
 
 
 class CreateLabelRequest(BaseModel):
@@ -31,6 +38,10 @@ class CreateLabelRequest(BaseModel):
 
 class UpdateLabelRequest(BaseModel):
     name: str
+
+
+class UpdateLabelVisibilityRequest(BaseModel):
+    is_hidden: bool
 
 
 class OkResponse(BaseModel):
@@ -47,7 +58,7 @@ async def get_labels(
         return _error_response(status.HTTP_401_UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다.")
 
     rows = await list_labels(db)
-    return [LabelResponse(name=item.name) for item in rows]
+    return [LabelResponse(name=item.name, is_hidden=item.is_hidden) for item in rows]
 
 
 @router.post(
@@ -68,7 +79,28 @@ async def create_label_api(
     result = await create_label(payload.name, auth_user, db)
     if isinstance(result, DomainError):
         return _error_response(_status(result.code), result.code, result.message)
-    return LabelResponse(name=result.name)
+    return LabelResponse(name=result.name, is_hidden=result.is_hidden)
+
+
+@router.patch(
+    "/{label_name}/visibility",
+    response_model=LabelResponse,
+    responses={400: {"model": ErrorResponse}, 401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}},
+)
+async def update_label_visibility_api(
+    label_name: str,
+    payload: UpdateLabelVisibilityRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> LabelResponse | JSONResponse:
+    auth_user = await _require_auth_user(request, db)
+    if auth_user is None:
+        return _error_response(status.HTTP_401_UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다.")
+
+    result = await set_label_visibility(label_name, payload.is_hidden, auth_user, db)
+    if isinstance(result, DomainError):
+        return _error_response(_status(result.code), result.code, result.message)
+    return LabelResponse(name=result.name, is_hidden=result.is_hidden)
 
 
 @router.patch(
@@ -89,7 +121,7 @@ async def update_label_api(
     result = await update_label(label_name, payload.name, auth_user, db)
     if isinstance(result, DomainError):
         return _error_response(_status(result.code), result.code, result.message)
-    return LabelResponse(name=result.name)
+    return LabelResponse(name=result.name, is_hidden=result.is_hidden)
 
 
 @router.delete(
