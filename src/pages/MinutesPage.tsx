@@ -776,6 +776,20 @@ function MinutesPage() {
 
     return [...startsWithName, ...includesName, ...includesEmail].slice(0, 6);
   }, [attendeeQuery, selectedAttendees, users]);
+  const selectAttendee = useCallback((user: AppUser) => {
+    setSelectedAttendees((prev) => [...prev, user]);
+    setAttendeeQuery('');
+  }, []);
+  const handleAttendeeKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (!isEditing || event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+      const firstUser = filteredUsers[0];
+      if (!firstUser) return;
+      event.preventDefault();
+      selectAttendee(firstUser);
+    },
+    [filteredUsers, isEditing, selectAttendee]
+  );
 
   const handleUndo = useCallback(() => {
     if (!isEditing) return;
@@ -1605,6 +1619,7 @@ function MinutesPage() {
                   value={attendeeQuery}
                   placeholder={selectedAttendees.length === 0 ? '이름 입력...' : ''}
                   onChange={(e) => setAttendeeQuery(e.target.value)}
+                  onKeyDown={handleAttendeeKeyDown}
                   disabled={!isEditing}
                 />
               </div>
@@ -1623,10 +1638,7 @@ function MinutesPage() {
                     <button
                       key={user.id}
                       className="popover-item"
-                      onClick={() => {
-                        setSelectedAttendees((prev) => [...prev, user]);
-                        setAttendeeQuery('');
-                      }}
+                      onClick={() => selectAttendee(user)}
                     >
                       {user.name} ({user.email})
                     </button>

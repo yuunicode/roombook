@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { format, parse } from 'date-fns';
 import { DayPicker } from 'react-day-picker';
 import { ko } from 'date-fns/locale';
@@ -92,6 +98,20 @@ function ReservationDialog({
     () => filterReservationUsers(attendeeQuery, selectedAttendees, users),
     [attendeeQuery, selectedAttendees, users]
   );
+  const selectAttendee = useCallback((user: AppUser) => {
+    setSelectedAttendees((prev) => [...prev, user]);
+    setAttendeeQuery('');
+  }, []);
+  const handleAttendeeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+      const firstUser = filteredUsers[0];
+      if (!firstUser) return;
+      event.preventDefault();
+      selectAttendee(firstUser);
+    },
+    [filteredUsers, selectAttendee]
+  );
 
   const isRangeBlocked = useCallback(
     (start: Date, end: Date) => occupiedRanges.some((item) => start < item.end && item.start < end),
@@ -99,15 +119,15 @@ function ReservationDialog({
   );
 
   const { blockedStartSlots, blockedEndSlots, handleTimeClick } = useReservationTimeSelection({
-      selectedDate,
-      startTime,
-      endTime,
-      isSelectingEnd,
-      isRangeBlocked,
-      setStartTime,
-      setEndTime,
-      setIsSelectingEnd,
-    });
+    selectedDate,
+    startTime,
+    endTime,
+    isSelectingEnd,
+    isRangeBlocked,
+    setStartTime,
+    setEndTime,
+    setIsSelectingEnd,
+  });
 
   const selectedTimeLabel =
     startTime && endTime
@@ -276,6 +296,7 @@ function ReservationDialog({
                   value={attendeeQuery}
                   placeholder={selectedAttendees.length === 0 ? '이름 입력...' : ''}
                   onChange={(e) => setAttendeeQuery(e.target.value)}
+                  onKeyDown={handleAttendeeKeyDown}
                 />
               </div>
               {filteredUsers.length > 0 && (
@@ -290,14 +311,7 @@ function ReservationDialog({
                   }}
                 >
                   {filteredUsers.slice(0, 4).map((u) => (
-                    <button
-                      key={u.id}
-                      className="popover-item"
-                      onClick={() => {
-                        setSelectedAttendees((prev) => [...prev, u]);
-                        setAttendeeQuery('');
-                      }}
-                    >
+                    <button key={u.id} className="popover-item" onClick={() => selectAttendee(u)}>
                       {u.name} ({u.email})
                     </button>
                   ))}

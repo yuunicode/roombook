@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { format, parse, startOfDay } from 'date-fns';
 import { DayPicker } from 'react-day-picker';
 import { ko } from 'date-fns/locale';
@@ -119,6 +125,20 @@ function ReservationStatusDialog({
   const filteredUsers = useMemo(
     () => filterReservationUsers(attendeeQuery, selectedAttendees, users),
     [attendeeQuery, selectedAttendees, users]
+  );
+  const selectAttendee = useCallback((user: AppUser) => {
+    setSelectedAttendees((prev) => [...prev, user]);
+    setAttendeeQuery('');
+  }, []);
+  const handleAttendeeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+      const firstUser = filteredUsers[0];
+      if (!firstUser) return;
+      event.preventDefault();
+      selectAttendee(firstUser);
+    },
+    [filteredUsers, selectAttendee]
   );
 
   const isRangeBlocked = useMemo(() => {
@@ -385,6 +405,7 @@ function ReservationStatusDialog({
                     value={attendeeQuery}
                     placeholder={selectedAttendees.length === 0 ? '이름 입력...' : ''}
                     onChange={(e) => setAttendeeQuery(e.target.value)}
+                    onKeyDown={handleAttendeeKeyDown}
                   />
                 </div>
                 {filteredUsers.length > 0 && (
@@ -399,14 +420,7 @@ function ReservationStatusDialog({
                     }}
                   >
                     {filteredUsers.slice(0, 4).map((u) => (
-                      <button
-                        key={u.id}
-                        className="popover-item"
-                        onClick={() => {
-                          setSelectedAttendees((prev) => [...prev, u]);
-                          setAttendeeQuery('');
-                        }}
-                      >
+                      <button key={u.id} className="popover-item" onClick={() => selectAttendee(u)}>
                         {u.name} ({u.email})
                       </button>
                     ))}
