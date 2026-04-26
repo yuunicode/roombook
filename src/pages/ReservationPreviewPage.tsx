@@ -57,6 +57,11 @@ const MOCK_USERS: AppUser[] = [
   },
 ];
 
+const MOCK_ROOMS = [
+  { id: 'A', name: '회의실 A', capacity: 8 },
+  { id: 'B', name: '회의실 B', capacity: 6 },
+];
+
 function ReservationPreviewPage() {
   const previewDate = useMemo(buildPreviewDate, []);
   const currentUser = MOCK_USERS[0];
@@ -66,6 +71,8 @@ function ReservationPreviewPage() {
   const [reservations, setReservations] = useState<ReservationStatus[]>(() => [
     {
       id: 'preview-rsv-1',
+      roomId: 'A',
+      roomName: '회의실 A',
       title: '주간 운영 점검',
       label: '없음',
       attendees: [MOCK_USERS[0], MOCK_USERS[1]],
@@ -82,6 +89,8 @@ function ReservationPreviewPage() {
     },
     {
       id: 'preview-rsv-2',
+      roomId: 'A',
+      roomName: '회의실 A',
       title: '고객 제안서 리뷰',
       label: '프로젝트A',
       attendees: [MOCK_USERS[0], MOCK_USERS[2]],
@@ -98,6 +107,8 @@ function ReservationPreviewPage() {
     },
     {
       id: 'preview-rsv-3',
+      roomId: 'A',
+      roomName: '회의실 A',
       title: '후속 액션 정리',
       label: '긴급',
       attendees: [MOCK_USERS[1]],
@@ -120,7 +131,13 @@ function ReservationPreviewPage() {
   );
 
   const occupiedRanges = useMemo(
-    () => reservations.map((item) => ({ start: item.start, end: item.end })),
+    () =>
+      reservations.map((item) => ({
+        id: item.id,
+        roomId: item.roomId,
+        start: item.start,
+        end: item.end,
+      })),
     [reservations]
   );
 
@@ -132,6 +149,8 @@ function ReservationPreviewPage() {
       ...prev,
       {
         id: `preview-rsv-${Date.now()}`,
+        roomId: 'A',
+        roomName: '회의실 A',
         title: draft.title,
         label: draft.label,
         attendees: draft.attendees,
@@ -254,12 +273,15 @@ function ReservationPreviewPage() {
           <div>
             <h2 style={{ margin: 0, fontSize: '18px' }}>점유 시간 샘플</h2>
             <p style={{ margin: '4px 0 0', fontSize: '13px', color: 'var(--text-muted)' }}>
-              날짜: {previewDate.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
+              날짜:{' '}
+              {previewDate.toLocaleDateString('ko-KR', {
+                month: 'long',
+                day: 'numeric',
+                weekday: 'short',
+              })}
             </p>
           </div>
-          <span className="status-badge">
-            현재 예약 {reservations.length}건
-          </span>
+          <span className="status-badge">현재 예약 {reservations.length}건</span>
         </div>
 
         <div style={{ display: 'grid', gap: '12px' }}>
@@ -316,6 +338,7 @@ function ReservationPreviewPage() {
         reservation={selectedReservation}
         currentUser={currentUser}
         users={MOCK_USERS}
+        rooms={MOCK_ROOMS}
         labelOptions={['없음', '프로젝트A', '긴급']}
         occupiedRanges={occupiedRanges}
         onClose={() => setSelectedReservationId(null)}

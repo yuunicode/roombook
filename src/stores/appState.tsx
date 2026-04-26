@@ -333,6 +333,7 @@ function AppStateProvider({ children }: { children: ReactNode }) {
   const updateReservationAction = useCallback(
     async (id: string, payload: Omit<ReservationStatus, 'id' | 'creatorEmail'>) => {
       const updated = await updateReservationApi(id, {
+        room_id: payload.roomId,
         title: payload.title,
         label: payload.label,
         start_at: toIsoString(payload.start),

@@ -69,6 +69,28 @@ def test_should_allow_internal_attendee_to_update_reservation(client: TestClient
     assert response.json()["title"] == "내부 참석자 수정"
 
 
+def test_should_allow_internal_attendee_to_move_reservation_room(client: TestClient) -> None:
+    _login(client, "admin@ecminer.com", "ecminer")
+    reservation_id = _create_reservation(client, attendees=["user@ecminer.com"])
+
+    _login(client, "user@ecminer.com", "ecminer2")
+    response = client.patch(
+        f"/api/reservations/{reservation_id}",
+        json={
+            "room_id": "B",
+            "title": "회의테이블로 변경",
+            "start_at": "2026-03-01T10:00:00+09:00",
+            "end_at": "2026-03-01T11:00:00+09:00",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["room_id"] == "B"
+    assert payload["room_name"] == "회의테이블"
+    assert payload["title"] == "회의테이블로 변경"
+
+
 def test_should_return_403_when_non_attendee_updates_reservation(client: TestClient) -> None:
     _login(client, "admin@ecminer.com", "ecminer")
     reservation_id = _create_reservation(client, attendees=["user@ecminer.com"])

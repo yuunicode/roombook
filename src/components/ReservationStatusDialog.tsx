@@ -15,6 +15,8 @@ import Dialog from './ui/Dialog';
 
 type ReservationStatus = {
   id: string;
+  roomId?: string;
+  roomName?: string;
   title: string;
   label: string;
   attendees: AppUser[];
@@ -30,13 +32,27 @@ type ReservationStatus = {
   creatorName?: string;
 };
 
+type RoomOption = {
+  id: string;
+  name: string;
+  capacity: number;
+};
+
+type OccupiedRange = {
+  id?: string;
+  roomId?: string;
+  start: Date;
+  end: Date;
+};
+
 type ReservationStatusDialogProps = {
   isOpen: boolean;
   reservation: ReservationStatus | null;
   currentUser: AppUser | null;
   users: AppUser[];
+  rooms: RoomOption[];
   labelOptions: string[];
-  occupiedRanges: Array<{ start: Date; end: Date }>;
+  occupiedRanges: OccupiedRange[];
   onClose: () => void;
   onSave: (
     reservationId: string,
@@ -50,6 +66,7 @@ function ReservationStatusDialog({
   reservation,
   currentUser,
   users,
+  rooms,
   labelOptions,
   occupiedRanges,
   onClose,
@@ -59,6 +76,7 @@ function ReservationStatusDialog({
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [selectedLabel, setSelectedLabel] = useState('');
+  const [selectedRoomId, setSelectedRoomId] = useState('');
   const [title, setTitle] = useState('');
   const [agenda, setAgenda] = useState('');
   const [attendeeQuery, setAttendeeQuery] = useState('');
@@ -72,6 +90,7 @@ function ReservationStatusDialog({
   useEffect(() => {
     if (!reservation) return;
     setIsEditing(false);
+    setSelectedRoomId(reservation.roomId ?? rooms[0]?.id ?? '');
     setSelectedLabel(reservation.label ?? '');
     setTitle(reservation.title ?? '');
     setSelectedAttendees(reservation.attendees ?? []);
@@ -90,7 +109,7 @@ function ReservationStatusDialog({
         : '10:00'
     );
     setIsSelectingEnd(false);
-  }, [reservation, isOpen]);
+  }, [reservation, isOpen, rooms]);
 
   const filteredUsers = useMemo(
     () => filterReservationUsers(attendeeQuery, selectedAttendees, users),
@@ -105,23 +124,23 @@ function ReservationStatusDialog({
       occupiedRanges
         .filter(
           (item) =>
-            item.start.getTime() !== reservation.start.getTime() ||
-            item.end.getTime() !== reservation.end.getTime()
+            item.id !== reservation.id &&
+            (item.roomId === undefined || item.roomId === selectedRoomId)
         )
         .some((item) => start < item.end && item.start < end);
-  }, [occupiedRanges, reservation]);
+  }, [occupiedRanges, reservation, selectedRoomId]);
 
   const { blockedStartSlots, blockedEndSlots, handleTimeClick } = useReservationTimeSelection({
-      selectedDate,
-      startTime,
-      endTime,
-      isSelectingEnd,
-      isRangeBlocked,
-      setStartTime,
-      setEndTime,
-      setIsSelectingEnd,
-      enabled: isEditing,
-    });
+    selectedDate,
+    startTime,
+    endTime,
+    isSelectingEnd,
+    isRangeBlocked,
+    setStartTime,
+    setEndTime,
+    setIsSelectingEnd,
+    enabled: isEditing,
+  });
   const handleAgendaKeyDown = useAgendaBulletKeyDown(setAgenda);
   const selectedTimeLabel =
     startTime && endTime
@@ -162,6 +181,9 @@ function ReservationStatusDialog({
 
     try {
       await onSave(reservation.id, {
+        roomId: selectedRoomId,
+        roomName:
+          rooms.find((room) => room.id === selectedRoomId)?.name ?? reservation.roomName ?? '',
         title: title.trim(),
         label: selectedLabel,
         attendees: selectedAttendees,
@@ -279,6 +301,33 @@ function ReservationStatusDialog({
             </div>
 
             <div className="status-card-body">
+              <div className="status-info-group">
+                <label className="status-info-label">회의실</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {rooms.map((room) => (
+                    <button
+                      key={room.id}
+                      type="button"
+                      className="room-capacity-tag"
+                      style={{
+                        background:
+                          selectedRoomId === room.id ? 'rgba(94, 106, 210, 0.12)' : undefined,
+                        color: selectedRoomId === room.id ? 'var(--accent)' : undefined,
+                      }}
+                      onClick={() => {
+                        if (room.id === selectedRoomId) return;
+                        setSelectedRoomId(room.id);
+                        setStartTime('');
+                        setEndTime('');
+                        setIsSelectingEnd(false);
+                      }}
+                    >
+                      {room.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="status-info-group">
                 <label className="status-info-label">라벨</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>

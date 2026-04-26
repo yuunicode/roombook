@@ -109,6 +109,7 @@ class ReservationDetailResponse(BaseModel):
 
 
 class UpdateReservationRequest(BaseModel):
+    room_id: str | None = None
     title: str | None = None
     label: str | None = None
     purpose: str | None = None
@@ -346,6 +347,7 @@ async def update_reservation_api(
     result = await update_reservation(
         reservation_id=reservation_id,
         payload=UpdateReservationInput(
+            room_id=payload.room_id,
             title=payload.title,
             label=payload.label,
             purpose=payload.purpose,
@@ -395,6 +397,7 @@ async def update_reservation_minutes_api(
     result = await update_reservation_minutes(
         reservation_id=reservation_id,
         payload=UpdateReservationInput(
+            room_id=payload.room_id,
             title=payload.title,
             label=payload.label,
             purpose=payload.purpose,

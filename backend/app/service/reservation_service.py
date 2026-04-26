@@ -53,6 +53,7 @@ class CreateReservationInput:
 
 @dataclass(frozen=True, slots=True)
 class UpdateReservationInput:
+    room_id: str | None
     title: str | None
     label: str | None
     purpose: str | None
@@ -500,10 +501,17 @@ async def _update_reservation_internal(
     reservation: Reservation,
     current_timetable: Timetable,
     creator: User,
-    room: Room | None,
+    current_room: Room | None,
     payload: UpdateReservationInput,
     db: AsyncSession,
 ) -> ReservationDetailResult | DomainError:
+    next_room_id = payload.room_id if payload.room_id is not None else current_timetable.room_id
+    next_room = current_room
+    if next_room_id != current_timetable.room_id:
+        next_room = await find_room_by_id(db, next_room_id)
+        if next_room is None:
+            return DomainError(code="INVALID_ARGUMENT", message="존재하지 않는 회의실입니다.")
+
     next_title = payload.title if payload.title is not None else reservation.title
     next_label = payload.label if payload.label is not None else reservation.label
     next_purpose = payload.purpose if payload.purpose is not None else reservation.purpose
@@ -534,11 +542,11 @@ async def _update_reservation_internal(
     if not _is_valid_datetime_range(next_start_at, next_end_at):
         return DomainError(code="INVALID_ARGUMENT", message="종료시간은 시작시간보다 커야 합니다.")
 
-    await _acquire_room_reservation_lock(db, current_timetable.room_id)
+    await _acquire_room_reservation_lock(db, next_room_id)
 
     has_conflict = await find_reservation_conflict(
         db=db,
-        room_id=current_timetable.room_id,
+        room_id=next_room_id,
         start_at=next_start_at,
         end_at=next_end_at,
         exclude_reservation_id=reservation.id,
@@ -549,7 +557,7 @@ async def _update_reservation_internal(
     try:
         target_timetable = await _find_or_create_timetable(
             db=db,
-            room_id=current_timetable.room_id,
+            room_id=next_room_id,
             start_at=next_start_at,
             end_at=next_end_at,
         )
@@ -578,8 +586,8 @@ async def _update_reservation_internal(
     attendees = [AttendeeItem(id=user_id, name=name, email=email) for user_id, name, email in attendee_rows]
     return ReservationDetailResult(
         id=reservation.id,
-        room_id=current_timetable.room_id,
-        room_name=room.name if room is not None else current_timetable.room_id,
+        room_id=next_room_id,
+        room_name=next_room.name if next_room is not None else next_room_id,
         title=reservation.title,
         label=reservation.label,
         purpose=reservation.purpose,
