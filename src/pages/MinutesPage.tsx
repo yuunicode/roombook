@@ -77,6 +77,35 @@ function insertTextAtSelection(
   };
 }
 
+function getTextareaFont(textarea: HTMLTextAreaElement) {
+  const style = window.getComputedStyle(textarea);
+  return `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize} / ${style.lineHeight} ${style.fontFamily}`;
+}
+
+function measureTextWidth(textarea: HTMLTextAreaElement, text: string) {
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) return 0;
+
+  context.font = getTextareaFont(textarea);
+  return context.measureText(text).width;
+}
+
+function getBulletContinuationPrefix(
+  textarea: HTMLTextAreaElement,
+  indent: string,
+  bulletPrefix: string
+) {
+  const targetWidth = measureTextWidth(textarea, bulletPrefix);
+  const spaceWidth = measureTextWidth(textarea, ' ');
+  if (spaceWidth <= 0) {
+    return `${indent}  `;
+  }
+
+  const spaceCount = Math.max(1, Math.round(targetWidth / spaceWidth));
+  return `${indent}${' '.repeat(spaceCount)}`;
+}
+
 function toggleMarkdownBold(value: string, selectionStart: number, selectionEnd: number) {
   if (selectionStart === selectionEnd) {
     return null;
@@ -611,6 +640,57 @@ function MinutesPage() {
         )}${bullet}${value.slice(selectionEnd)}`;
         const nextCursor = lineStart + lineBeforeCursor.length - 1 + bullet.length;
         setFieldValueWithCursor(field, nextValue, nextCursor, nextCursor, textarea);
+        return;
+      }
+
+      if (event.key === 'Enter' && event.shiftKey) {
+        const bulletMatch = line.match(BULLET_PATTERN);
+        const continuationMatch = line.match(/^([ \t]+)(.*)$/);
+        const continuationPrefix = bulletMatch
+          ? getBulletContinuationPrefix(
+              textarea,
+              bulletMatch[1] ?? '',
+              getBulletPrefix((bulletMatch[1] ?? '').length)
+            )
+          : continuationMatch?.[1];
+        if (!continuationPrefix) return;
+
+        event.preventDefault();
+        const insert = `\n${continuationPrefix}`;
+        const result = insertTextAtSelection(value, selectionStart, selectionEnd, insert);
+        setFieldValueWithCursor(
+          field,
+          result.nextValue,
+          result.nextCursorStart,
+          result.nextCursorEnd,
+          textarea
+        );
+        return;
+      }
+
+      if (event.key === 'Enter') {
+        const bulletMatch = line.match(BULLET_PATTERN);
+        if (!bulletMatch) return;
+
+        event.preventDefault();
+        const indent = bulletMatch[1] ?? '';
+        const content = bulletMatch[3] ?? '';
+
+        if (content.trim() === '') {
+          const nextValue = `${value.slice(0, lineStart)}${value.slice(lineEnd)}`;
+          setFieldValueWithCursor(field, nextValue, lineStart, lineStart, textarea);
+          return;
+        }
+
+        const insert = `\n${indent}${getBulletPrefix(indent.length)}`;
+        const result = insertTextAtSelection(value, selectionStart, selectionEnd, insert);
+        setFieldValueWithCursor(
+          field,
+          result.nextValue,
+          result.nextCursorStart,
+          result.nextCursorEnd,
+          textarea
+        );
         return;
       }
 
