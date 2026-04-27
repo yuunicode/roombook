@@ -10,6 +10,7 @@ import {
   AdminPage,
   ReservationPreviewPage,
 } from './pages';
+import { useVersionRefresh } from './hooks/useVersionRefresh';
 import MainLayout from './layouts/MainLayout';
 import { useAppState } from './stores';
 
@@ -49,6 +50,8 @@ function PublicOnlyRoute() {
 }
 
 function App() {
+  useVersionRefresh();
+
   return (
     <BrowserRouter>
       <Routes>

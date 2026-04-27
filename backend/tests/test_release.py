@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.core import release
 
@@ -31,3 +32,10 @@ def test_should_fallback_to_configured_version_when_manifest_is_missing(
     assert release.get_current_version() == "2.3.4"
 
     release.get_release_manifest.cache_clear()
+
+
+def test_should_return_current_release_info(client: TestClient) -> None:
+    response = client.get("/api/release")
+
+    assert response.status_code == 200
+    assert response.json() == {"current_version": release.get_current_version()}

@@ -160,6 +160,10 @@ export type ReservationEventDto = {
   reservation_id: string;
 };
 
+export type ReleaseInfoDto = {
+  current_version: string;
+};
+
 const API_BASE = '/api';
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -204,6 +208,13 @@ export async function getCurrentUser(): Promise<UserDto> {
     method: 'GET',
   });
   return result.user;
+}
+
+export async function getReleaseInfo(): Promise<ReleaseInfoDto> {
+  return requestJson<ReleaseInfoDto>('/release', {
+    method: 'GET',
+    cache: 'no-store',
+  });
 }
 
 export async function logout(): Promise<void> {
