@@ -12,10 +12,15 @@
   - NAS에는 PostgreSQL만 유지
   - 다른 사내 PC에 frontend + backend 호스팅
   - NAS DB를 외부 앱 호스트에서 사용하는 설정
+- [04-production-rollout-checklist.md](./04-production-rollout-checklist.md)
+  - 운영 배포 전 DB 백업/room_id 점검
+  - backend 우선 기동 방식의 안전한 반영 절차
+  - 배포 후 확인 포인트와 장애 대응
 
 ## 추천 순서
 
 1. 먼저 [01-qnap-container-station.md](./01-qnap-container-station.md)에서 QNAP DB 컨테이너 설정을 확인합니다.
 2. 그다음 [03-nas-db-app-host.md](./03-nas-db-app-host.md)대로 사내 PC에 앱을 띄웁니다.
+3. 운영 반영 직전에는 [04-production-rollout-checklist.md](./04-production-rollout-checklist.md) 순서대로 점검합니다.
 
 배포는 먼저 수동으로 검증하는 편이 낫습니다. QNAP DB 접근, 환경 변수, Docker 실행이 먼저 확인되어야 이후 운영이 단순해집니다.
