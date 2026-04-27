@@ -27,6 +27,48 @@ function getBulletPrefix(level: number) {
   return `${BULLET_SYMBOLS[normalized]} `;
 }
 
+function insertTextAtSelection(
+  value: string,
+  selectionStart: number,
+  selectionEnd: number,
+  insertText: string
+) {
+  return {
+    nextValue: `${value.slice(0, selectionStart)}${insertText}${value.slice(selectionEnd)}`,
+    nextCursorStart: selectionStart + insertText.length,
+    nextCursorEnd: selectionStart + insertText.length,
+  };
+}
+
+function getTextareaFont(textarea: HTMLTextAreaElement) {
+  const style = window.getComputedStyle(textarea);
+  return `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize} / ${style.lineHeight} ${style.fontFamily}`;
+}
+
+function measureTextWidth(textarea: HTMLTextAreaElement, text: string) {
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) return 0;
+
+  context.font = getTextareaFont(textarea);
+  return context.measureText(text).width;
+}
+
+function getBulletContinuationPrefix(
+  textarea: HTMLTextAreaElement,
+  indent: string,
+  bulletPrefix: string
+) {
+  const targetWidth = measureTextWidth(textarea, bulletPrefix);
+  const spaceWidth = measureTextWidth(textarea, ' ');
+  if (spaceWidth <= 0) {
+    return `${indent}  `;
+  }
+
+  const spaceCount = Math.max(1, Math.round(targetWidth / spaceWidth));
+  return `${indent}${' '.repeat(spaceCount)}`;
+}
+
 type UseReservationTimeSelectionOptions = {
   selectedDate: Date | undefined;
   startTime: string;
@@ -206,24 +248,57 @@ export function useAgendaBulletKeyDown(setAgenda: Dispatch<SetStateAction<string
         });
       };
 
-      if (event.key === '-') {
+      if (event.key === ' ' || event.key === 'Spacebar') {
         if (selectionStart !== selectionEnd) return;
-        if (!/^\t*$/.test(lineBeforeCursor)) return;
+        if (!/^\t*-$/.test(lineBeforeCursor)) return;
         event.preventDefault();
-        const bullet = getBulletPrefix(Math.min(lineBeforeCursor.length, MAX_BULLET_LEVEL - 1));
-        const nextValue = `${value.slice(0, selectionStart)}${bullet}${value.slice(selectionEnd)}`;
-        setAgendaWithCursor(nextValue, selectionStart + bullet.length);
+        const indentLevel = Math.min(lineBeforeCursor.length - 1, MAX_BULLET_LEVEL - 1);
+        const bullet = getBulletPrefix(indentLevel);
+        const nextValue = `${value.slice(0, lineStart)}${lineBeforeCursor.slice(
+          0,
+          -1
+        )}${bullet}${value.slice(selectionEnd)}`;
+        const nextCursor = lineStart + lineBeforeCursor.length - 1 + bullet.length;
+        setAgendaWithCursor(nextValue, nextCursor);
+        return;
+      }
+
+      if (event.key === 'Enter' && event.shiftKey) {
+        const bulletMatch = line.match(BULLET_PATTERN);
+        const continuationMatch = line.match(/^([ \t]+)(.*)$/);
+        const continuationPrefix = bulletMatch
+          ? getBulletContinuationPrefix(
+              textarea,
+              bulletMatch[1] ?? '',
+              getBulletPrefix((bulletMatch[1] ?? '').length)
+            )
+          : continuationMatch?.[1];
+        if (!continuationPrefix) return;
+
+        event.preventDefault();
+        const insert = `\n${continuationPrefix}`;
+        const result = insertTextAtSelection(value, selectionStart, selectionEnd, insert);
+        setAgendaWithCursor(result.nextValue, result.nextCursorStart);
         return;
       }
 
       if (event.key === 'Enter') {
         const bulletMatch = line.match(BULLET_PATTERN);
         if (!bulletMatch) return;
+
         event.preventDefault();
         const indent = bulletMatch[1] ?? '';
+        const content = bulletMatch[3] ?? '';
+
+        if (content.trim() === '') {
+          const nextValue = `${value.slice(0, lineStart)}${value.slice(lineEnd)}`;
+          setAgendaWithCursor(nextValue, lineStart);
+          return;
+        }
+
         const insert = `\n${indent}${getBulletPrefix(indent.length)}`;
-        const nextValue = `${value.slice(0, selectionStart)}${insert}${value.slice(selectionEnd)}`;
-        setAgendaWithCursor(nextValue, selectionStart + insert.length);
+        const result = insertTextAtSelection(value, selectionStart, selectionEnd, insert);
+        setAgendaWithCursor(result.nextValue, result.nextCursorStart);
         return;
       }
 
