@@ -10,6 +10,10 @@ import { DayPicker } from 'react-day-picker';
 import { ko } from 'date-fns/locale';
 import type { AppUser } from '../stores';
 import {
+  mergeExternalAttendeeTokens,
+  serializeExternalAttendees,
+} from '../utils/externalAttendees';
+import {
   TIME_SLOTS,
   filterReservationUsers,
   useAgendaBulletKeyDown,
@@ -44,6 +48,10 @@ type ReservationDialogProps = {
   onConfirm: (draft: ReservationDraft) => Promise<void> | void;
 };
 
+function getDefaultReservationLabel(labelOptions: string[]) {
+  return labelOptions.includes('없음') ? '없음' : (labelOptions[0] ?? '');
+}
+
 function ReservationDialog({
   isOpen,
   initialStart,
@@ -56,12 +64,13 @@ function ReservationDialog({
   onClose,
   onConfirm,
 }: ReservationDialogProps) {
-  const [selectedLabel, setSelectedLabel] = useState('');
+  const [selectedLabel, setSelectedLabel] = useState(getDefaultReservationLabel(labelOptions));
   const [title, setTitle] = useState('');
   const [agenda, setAgenda] = useState('');
   const [attendeeQuery, setAttendeeQuery] = useState('');
   const [selectedAttendees, setSelectedAttendees] = useState<AppUser[]>([]);
-  const [externalAttendees, setExternalAttendees] = useState('');
+  const [externalAttendeeTokens, setExternalAttendeeTokens] = useState<string[]>([]);
+  const [externalAttendeeQuery, setExternalAttendeeQuery] = useState('');
 
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialStart);
   const [startTime, setStartTime] = useState(format(initialStart, 'HH:mm'));
@@ -71,11 +80,12 @@ function ReservationDialog({
   useEffect(() => {
     if (isOpen) {
       setTitle('');
-      setSelectedLabel(labelOptions[0] ?? '');
+      setSelectedLabel(getDefaultReservationLabel(labelOptions));
       setAgenda('');
       setAttendeeQuery('');
       setSelectedAttendees(currentUser ? [currentUser] : []);
-      setExternalAttendees('');
+      setExternalAttendeeTokens([]);
+      setExternalAttendeeQuery('');
       setSelectedDate(initialStart);
 
       if (startWithEmptyTimeSelection) {
@@ -104,13 +114,44 @@ function ReservationDialog({
   }, []);
   const handleAttendeeKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Backspace' && !event.currentTarget.value && selectedAttendees.length > 0) {
+        event.preventDefault();
+        setSelectedAttendees((prev) => prev.slice(0, -1));
+        return;
+      }
       if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
       const firstUser = filteredUsers[0];
       if (!firstUser) return;
       event.preventDefault();
       selectAttendee(firstUser);
     },
-    [filteredUsers, selectAttendee]
+    [filteredUsers, selectAttendee, selectedAttendees.length]
+  );
+  const commitExternalAttendeeQuery = useCallback(() => {
+    if (!externalAttendeeQuery.trim()) return externalAttendeeTokens;
+
+    const nextTokens = mergeExternalAttendeeTokens(externalAttendeeTokens, externalAttendeeQuery);
+    setExternalAttendeeTokens(nextTokens);
+    setExternalAttendeeQuery('');
+    return nextTokens;
+  }, [externalAttendeeQuery, externalAttendeeTokens]);
+  const handleExternalAttendeeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (
+        event.key === 'Backspace' &&
+        !event.currentTarget.value &&
+        externalAttendeeTokens.length > 0
+      ) {
+        event.preventDefault();
+        setExternalAttendeeTokens((prev) => prev.slice(0, -1));
+        return;
+      }
+      if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+      if (!externalAttendeeQuery.trim()) return;
+      event.preventDefault();
+      commitExternalAttendeeQuery();
+    },
+    [commitExternalAttendeeQuery, externalAttendeeQuery, externalAttendeeTokens.length]
   );
 
   const isRangeBlocked = useCallback(
@@ -154,13 +195,15 @@ function ReservationDialog({
       return;
     }
 
+    const nextExternalAttendeeTokens = commitExternalAttendeeQuery();
+
     await onConfirm({
       title: title.trim(),
       label: selectedLabel,
       start,
       end,
       attendees: selectedAttendees,
-      externalAttendees: externalAttendees.trim(),
+      externalAttendees: serializeExternalAttendees(nextExternalAttendeeTokens),
       agenda: agenda.trim(),
       meetingContent: '',
       meetingResult: '',
@@ -321,12 +364,30 @@ function ReservationDialog({
 
             <div className="status-info-group">
               <label className="status-info-label">외부 참석자</label>
-              <input
-                className="linear-input"
-                value={externalAttendees}
-                onChange={(e) => setExternalAttendees(e.target.value)}
-                placeholder="외부 참석자를 입력하세요"
-              />
+              <div className="attendee-token-input">
+                {externalAttendeeTokens.map((attendee) => (
+                  <span
+                    key={attendee}
+                    className="room-capacity-tag"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() =>
+                      setExternalAttendeeTokens((prev) => prev.filter((item) => item !== attendee))
+                    }
+                  >
+                    {attendee} ✕
+                  </span>
+                ))}
+                <input
+                  className="attendee-token-field"
+                  value={externalAttendeeQuery}
+                  placeholder={
+                    externalAttendeeTokens.length === 0 ? '외부 참석자를 입력하세요' : ''
+                  }
+                  onChange={(e) => setExternalAttendeeQuery(e.target.value)}
+                  onKeyDown={handleExternalAttendeeKeyDown}
+                  onBlur={commitExternalAttendeeQuery}
+                />
+              </div>
             </div>
 
             <div className="status-info-group">

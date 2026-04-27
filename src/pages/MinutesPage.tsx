@@ -12,6 +12,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAppState, type AppReservation, type AppUser } from '../stores';
 import AppIcon from '../components/ui/AppIcon';
 import {
+  mergeExternalAttendeeTokens,
+  parseExternalAttendees,
+  serializeExternalAttendees,
+} from '../utils/externalAttendees';
+import {
   acquireMinutesLock as acquireMinutesLockApi,
   getMinutesLiveState as getMinutesLiveStateApi,
   getMinutesLock as getMinutesLockApi,
@@ -333,6 +338,8 @@ function MinutesPage() {
   const [activeLock, setActiveLock] = useState<EditLock | null>(null);
   const [attendeeQuery, setAttendeeQuery] = useState('');
   const [selectedAttendees, setSelectedAttendees] = useState<AppUser[]>([]);
+  const [externalAttendeeTokens, setExternalAttendeeTokens] = useState<string[]>([]);
+  const [externalAttendeeQuery, setExternalAttendeeQuery] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -480,6 +487,8 @@ function MinutesPage() {
 
     setDraft(nextDraft);
     setSelectedAttendees(activeReservation.attendees ?? []);
+    setExternalAttendeeTokens(parseExternalAttendees(activeReservation.externalAttendees ?? ''));
+    setExternalAttendeeQuery('');
     setAttendeeQuery('');
     historyRef.current = [];
     setSaveMessage('');
@@ -488,6 +497,11 @@ function MinutesPage() {
       attendees: (activeReservation.attendees ?? []).map((attendee) => attendee.id),
     });
   }, [activeReservation, reservationLabels, isEditing]);
+
+  useEffect(() => {
+    setExternalAttendeeTokens(parseExternalAttendees(draft.externalAttendees));
+    setExternalAttendeeQuery('');
+  }, [draft.externalAttendees]);
 
   const editableReservationLabels = useMemo(() => {
     const currentLabel = draft.label.trim();
@@ -782,13 +796,57 @@ function MinutesPage() {
   }, []);
   const handleAttendeeKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Backspace' && !event.currentTarget.value && selectedAttendees.length > 0) {
+        event.preventDefault();
+        setSelectedAttendees((prev) => prev.slice(0, -1));
+        return;
+      }
       if (!isEditing || event.key !== 'Enter' || event.nativeEvent.isComposing) return;
       const firstUser = filteredUsers[0];
       if (!firstUser) return;
       event.preventDefault();
       selectAttendee(firstUser);
     },
-    [filteredUsers, isEditing, selectAttendee]
+    [filteredUsers, isEditing, selectAttendee, selectedAttendees.length]
+  );
+  const updateExternalAttendeeTokens = useCallback(
+    (nextTokens: string[]) => {
+      if (!isEditing) return;
+      updateDraft({ externalAttendees: serializeExternalAttendees(nextTokens) });
+      setExternalAttendeeQuery('');
+    },
+    [isEditing, updateDraft]
+  );
+  const commitExternalAttendeeQuery = useCallback(() => {
+    if (!isEditing || !externalAttendeeQuery.trim()) return externalAttendeeTokens;
+
+    const nextTokens = mergeExternalAttendeeTokens(externalAttendeeTokens, externalAttendeeQuery);
+    updateExternalAttendeeTokens(nextTokens);
+    return nextTokens;
+  }, [externalAttendeeQuery, externalAttendeeTokens, isEditing, updateExternalAttendeeTokens]);
+  const handleExternalAttendeeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (
+        event.key === 'Backspace' &&
+        !event.currentTarget.value &&
+        externalAttendeeTokens.length > 0
+      ) {
+        event.preventDefault();
+        updateExternalAttendeeTokens(externalAttendeeTokens.slice(0, -1));
+        return;
+      }
+      if (!isEditing || event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+      if (!externalAttendeeQuery.trim()) return;
+      event.preventDefault();
+      commitExternalAttendeeQuery();
+    },
+    [
+      commitExternalAttendeeQuery,
+      externalAttendeeQuery,
+      externalAttendeeTokens,
+      isEditing,
+      updateExternalAttendeeTokens,
+    ]
   );
 
   const handleUndo = useCallback(() => {
@@ -816,7 +874,10 @@ function MinutesPage() {
   }, [isEditing, handleUndo]);
 
   const persistDraft = useCallback(
-    async (notice: 'silent' | 'saved' | 'completed' = 'saved') => {
+    async (
+      notice: 'silent' | 'saved' | 'completed' = 'saved',
+      options: { commitPendingExternalAttendees?: boolean } = {}
+    ) => {
       if (!activeReservation || !isEditing || isSavingRef.current) return false;
       if (!draft.title.trim() || !draft.dateInput || !draft.startTimeInput || !draft.endTimeInput) {
         if (notice !== 'silent') setSaveMessage('필수 항목을 먼저 입력하세요.');
@@ -834,8 +895,15 @@ function MinutesPage() {
         return false;
       }
 
+      const externalAttendees =
+        options.commitPendingExternalAttendees && externalAttendeeQuery.trim()
+          ? serializeExternalAttendees(
+              mergeExternalAttendeeTokens(externalAttendeeTokens, externalAttendeeQuery)
+            )
+          : draft.externalAttendees;
+
       const currentKey = JSON.stringify({
-        draft,
+        draft: { ...draft, externalAttendees },
         attendees: selectedAttendees.map((attendee) => attendee.id),
       });
       if (currentKey === lastSavedKeyRef.current) return true;
@@ -848,7 +916,7 @@ function MinutesPage() {
           start: nextStart,
           end: nextEnd,
           attendees: selectedAttendees,
-          externalAttendees: draft.externalAttendees,
+          externalAttendees,
           agenda: draft.agenda,
           meetingContent: draft.meetingContent,
           meetingResult: draft.meetingResult,
@@ -868,7 +936,15 @@ function MinutesPage() {
         isSavingRef.current = false;
       }
     },
-    [activeReservation, draft, isEditing, saveReservationMinutes, selectedAttendees]
+    [
+      activeReservation,
+      draft,
+      externalAttendeeQuery,
+      externalAttendeeTokens,
+      isEditing,
+      saveReservationMinutes,
+      selectedAttendees,
+    ]
   );
 
   const internalAttendeeText = selectedAttendees.map((attendee) => attendee.name).join(', ');
@@ -935,7 +1011,7 @@ function MinutesPage() {
   const handleEditToggle = () => {
     if (isEditing) {
       void (async () => {
-        const saved = await persistDraft('completed');
+        const saved = await persistDraft('completed', { commitPendingExternalAttendees: true });
         if (!saved) return;
         setIsEditing(false);
         await releaseLock();
@@ -1649,12 +1725,40 @@ function MinutesPage() {
 
             <div className="status-info-group" style={{ marginBottom: '8px' }}>
               <label className="status-info-label">외부 참석자</label>
-              <input
-                className="linear-input"
-                value={draft.externalAttendees}
-                onChange={(e) => updateDraft({ externalAttendees: e.target.value })}
-                disabled={!isEditing}
-              />
+              <div className="attendee-token-input">
+                {externalAttendeeTokens.map((attendee) => (
+                  <span
+                    key={attendee}
+                    className="room-capacity-tag"
+                    style={{ cursor: isEditing ? 'pointer' : 'default' }}
+                    onClick={() => {
+                      if (!isEditing) return;
+                      updateExternalAttendeeTokens(
+                        externalAttendeeTokens.filter((item) => item !== attendee)
+                      );
+                    }}
+                  >
+                    {attendee}
+                    {isEditing ? ' ✕' : ''}
+                  </span>
+                ))}
+                {isEditing ? (
+                  <input
+                    className="attendee-token-field"
+                    value={externalAttendeeQuery}
+                    placeholder={
+                      externalAttendeeTokens.length === 0 ? '외부 참석자를 입력하세요' : ''
+                    }
+                    onChange={(e) => setExternalAttendeeQuery(e.target.value)}
+                    onKeyDown={handleExternalAttendeeKeyDown}
+                    onBlur={commitExternalAttendeeQuery}
+                  />
+                ) : (
+                  externalAttendeeTokens.length === 0 && (
+                    <span className="status-info-value">없음</span>
+                  )
+                )}
+              </div>
             </div>
 
             <div style={{ borderTop: '1px dashed var(--border)', margin: '18px 0' }} />
