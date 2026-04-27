@@ -363,7 +363,7 @@ async def update_reservation_api(
             other_notes=payload.other_notes,
             minutes_attachment=payload.minutes_attachment,
         ),
-        auth_user_id=auth_user.id,
+        auth_user=auth_user,
         db=db,
     )
     if isinstance(result, DomainError):
@@ -413,7 +413,7 @@ async def update_reservation_minutes_api(
             other_notes=payload.other_notes,
             minutes_attachment=payload.minutes_attachment,
         ),
-        auth_user_id=auth_user.id,
+        auth_user=auth_user,
         db=db,
     )
     if isinstance(result, DomainError):
@@ -552,7 +552,7 @@ async def delete_reservation_api(
     if auth_user is None:
         return _error_response(status.HTTP_401_UNAUTHORIZED, "UNAUTHORIZED", "로그인이 필요합니다.")
 
-    result = await delete_reservation(reservation_id, auth_user.id, db)
+    result = await delete_reservation(reservation_id, auth_user, db)
     if isinstance(result, DomainError):
         return _error_response(_error_status(result.code), result.code, result.message)
     await reservation_event_broker.publish(ReservationEvent(action="deleted", reservation_id=reservation_id))

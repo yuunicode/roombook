@@ -398,6 +398,7 @@ function MinutesPage() {
   const viewerId = currentUser?.id ?? '';
   const canManageActiveReservation = useMemo(() => {
     if (!activeReservation || !currentUser) return false;
+    if (currentUser.isAdmin) return true;
     return (
       activeReservation.creatorEmail.toLowerCase() === currentUser.email.toLowerCase() ||
       activeReservation.attendees.some((attendee) => attendee.id === currentUser.id)

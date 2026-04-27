@@ -219,7 +219,8 @@ function ReservationStatusDialog({
   );
   const canManageReservation =
     currentUser !== null &&
-    (reservation.creatorEmail.toLowerCase() === currentUser.email.toLowerCase() ||
+    (currentUser.isAdmin ||
+      reservation.creatorEmail.toLowerCase() === currentUser.email.toLowerCase() ||
       reservation.attendees.some((attendee) => attendee.id === currentUser.id));
   const editForbiddenMessage = '예약자 또는 내부 참석자만 예약을 수정할 수 있습니다.';
   const deleteForbiddenMessage = '예약자 또는 내부 참석자만 예약을 취소할 수 있습니다.';

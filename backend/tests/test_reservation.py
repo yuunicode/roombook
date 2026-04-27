@@ -91,6 +91,24 @@ def test_should_allow_internal_attendee_to_move_reservation_room(client: TestCli
     assert payload["title"] == "회의테이블로 변경"
 
 
+def test_should_allow_admin_to_update_other_users_reservation(client: TestClient) -> None:
+    _login(client, "user@ecminer.com", "ecminer2")
+    reservation_id = _create_reservation(client)
+
+    _login(client, "admin@ecminer.com", "ecminer")
+    response = client.patch(
+        f"/api/reservations/{reservation_id}",
+        json={
+            "title": "관리자 수정",
+            "start_at": "2026-03-01T10:00:00+09:00",
+            "end_at": "2026-03-01T11:00:00+09:00",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "관리자 수정"
+
+
 def test_should_return_403_when_non_attendee_updates_reservation(client: TestClient) -> None:
     _login(client, "admin@ecminer.com", "ecminer")
     reservation_id = _create_reservation(client, attendees=["user@ecminer.com"])
@@ -114,6 +132,16 @@ def test_should_allow_internal_attendee_to_cancel_reservation(client: TestClient
     reservation_id = _create_reservation(client, attendees=["user@ecminer.com"])
 
     _login(client, "user@ecminer.com", "ecminer2")
+    response = client.delete(f"/api/reservations/{reservation_id}")
+
+    assert response.status_code == 204
+
+
+def test_should_allow_admin_to_cancel_other_users_reservation(client: TestClient) -> None:
+    _login(client, "user@ecminer.com", "ecminer2")
+    reservation_id = _create_reservation(client)
+
+    _login(client, "admin@ecminer.com", "ecminer")
     response = client.delete(f"/api/reservations/{reservation_id}")
 
     assert response.status_code == 204
@@ -148,6 +176,21 @@ def test_should_allow_internal_attendee_to_update_reservation_minutes(client: Te
     assert response.status_code == 200
     assert response.json()["agenda"] == "- 공유할 내용"
     assert response.json()["other_notes"] == "후속 의견 정리"
+
+
+def test_should_allow_admin_to_acquire_minutes_lock_for_other_users_reservation(client: TestClient) -> None:
+    _login(client, "user@ecminer.com", "ecminer2")
+    reservation_id = _create_reservation(client)
+
+    _login(client, "admin@ecminer.com", "ecminer")
+    response = client.post(
+        f"/api/reservations/{reservation_id}/minutes-lock",
+        json={"ttl_seconds": 15},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reservation_id"] == reservation_id
+    assert response.json()["holder_user_id"] == "1"
 
 
 def test_should_return_403_when_non_attendee_acquires_minutes_lock(client: TestClient) -> None:

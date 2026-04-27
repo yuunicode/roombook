@@ -27,6 +27,7 @@ from app.infra.reservation_attendee import list_attendees_by_reservation_id, rep
 from app.infra.room import Room, find_room_by_id
 from app.infra.timetable import Timetable, add_timetable, find_timetable_by_room_and_time
 from app.infra.user import User, find_user_by_id
+from app.service.admin_service import is_admin_user
 from app.service.auth_service import AuthUser
 from app.service.domain import DomainError
 from app.service.user_service import resolve_attendee_user_ids
@@ -282,14 +283,14 @@ async def list_reservations_for_wiki(
 async def update_reservation(
     reservation_id: str,
     payload: UpdateReservationInput,
-    auth_user_id: str,
+    auth_user: AuthUser,
     db: AsyncSession,
 ) -> ReservationDetailResult | DomainError:
     item = await find_reservation_with_timetable_and_creator(db, reservation_id)
     if item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
     reservation, current_timetable, creator, room = item
-    permission_error = await _ensure_reservation_edit_permission(reservation.id, reservation.user_id, auth_user_id, db)
+    permission_error = await _ensure_reservation_edit_permission(reservation.id, reservation.user_id, auth_user, db)
     if permission_error is not None:
         return permission_error
     return await _update_reservation_internal(reservation, current_timetable, creator, room, payload, db)
@@ -298,14 +299,14 @@ async def update_reservation(
 async def update_reservation_minutes(
     reservation_id: str,
     payload: UpdateReservationInput,
-    auth_user_id: str,
+    auth_user: AuthUser,
     db: AsyncSession,
 ) -> ReservationDetailResult | DomainError:
     item = await find_reservation_with_timetable_and_creator(db, reservation_id)
     if item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
     reservation, current_timetable, creator, room = item
-    permission_error = await _ensure_minutes_edit_permission(reservation.id, reservation.user_id, auth_user_id, db)
+    permission_error = await _ensure_minutes_edit_permission(reservation.id, reservation.user_id, auth_user, db)
     if permission_error is not None:
         return permission_error
     return await _update_reservation_internal(reservation, current_timetable, creator, room, payload, db)
@@ -313,16 +314,14 @@ async def update_reservation_minutes(
 
 async def delete_reservation(
     reservation_id: str,
-    auth_user_id: str,
+    auth_user: AuthUser,
     db: AsyncSession,
 ) -> None | DomainError:
     item = await find_reservation_with_timetable_and_creator(db, reservation_id)
     if item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
     reservation, _, _, _ = item
-    permission_error = await _ensure_reservation_delete_permission(
-        reservation.id, reservation.user_id, auth_user_id, db
-    )
+    permission_error = await _ensure_reservation_delete_permission(reservation.id, reservation.user_id, auth_user, db)
     if permission_error is not None:
         return permission_error
 
@@ -360,7 +359,7 @@ async def acquire_minutes_lock(
     if reservation_item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
     reservation, _, _, _ = reservation_item
-    permission_error = await _ensure_minutes_edit_permission(reservation.id, reservation.user_id, holder.id, db)
+    permission_error = await _ensure_minutes_edit_permission(reservation.id, reservation.user_id, holder, db)
     if permission_error is not None:
         return permission_error
 
@@ -453,7 +452,7 @@ async def update_minutes_live_state(
     if reservation_item is None:
         return DomainError(code="NOT_FOUND", message="예약을 찾을 수 없습니다.")
     reservation, _, _, _ = reservation_item
-    permission_error = await _ensure_minutes_edit_permission(reservation.id, reservation.user_id, holder.id, db)
+    permission_error = await _ensure_minutes_edit_permission(reservation.id, reservation.user_id, holder, db)
     if permission_error is not None:
         return permission_error
 
@@ -642,13 +641,13 @@ async def _to_reservation_detail_result(
 async def _ensure_reservation_edit_permission(
     reservation_id: str,
     creator_user_id: str,
-    auth_user_id: str,
+    auth_user: AuthUser,
     db: AsyncSession,
 ) -> DomainError | None:
     return await _ensure_reservation_manager(
         reservation_id,
         creator_user_id,
-        auth_user_id,
+        auth_user,
         db,
         message="예약자 또는 내부 참석자만 예약을 수정할 수 있습니다.",
     )
@@ -657,13 +656,13 @@ async def _ensure_reservation_edit_permission(
 async def _ensure_reservation_delete_permission(
     reservation_id: str,
     creator_user_id: str,
-    auth_user_id: str,
+    auth_user: AuthUser,
     db: AsyncSession,
 ) -> DomainError | None:
     return await _ensure_reservation_manager(
         reservation_id,
         creator_user_id,
-        auth_user_id,
+        auth_user,
         db,
         message="예약자 또는 내부 참석자만 예약을 취소할 수 있습니다.",
     )
@@ -672,13 +671,13 @@ async def _ensure_reservation_delete_permission(
 async def _ensure_minutes_edit_permission(
     reservation_id: str,
     creator_user_id: str,
-    auth_user_id: str,
+    auth_user: AuthUser,
     db: AsyncSession,
 ) -> DomainError | None:
     return await _ensure_reservation_manager(
         reservation_id,
         creator_user_id,
-        auth_user_id,
+        auth_user,
         db,
         message="예약자 또는 내부 참석자만 회의록을 수정할 수 있습니다.",
     )
@@ -687,16 +686,19 @@ async def _ensure_minutes_edit_permission(
 async def _ensure_reservation_manager(
     reservation_id: str,
     creator_user_id: str,
-    auth_user_id: str,
+    auth_user: AuthUser,
     db: AsyncSession,
     *,
     message: str,
 ) -> DomainError | None:
-    if creator_user_id == auth_user_id:
+    if is_admin_user(auth_user):
+        return None
+
+    if creator_user_id == auth_user.id:
         return None
 
     attendee_rows = await list_attendees_by_reservation_id(db, reservation_id)
-    if any(user_id == auth_user_id for user_id, _, _ in attendee_rows):
+    if any(user_id == auth_user.id for user_id, _, _ in attendee_rows):
         return None
 
     return DomainError(code="FORBIDDEN", message=message)
